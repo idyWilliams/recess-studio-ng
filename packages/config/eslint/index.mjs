@@ -11,6 +11,7 @@ export default tseslint.config(
       '**/.next/**',
       '**/coverage/**',
       '**/playwright-report/**',
+      '**/next-env.d.ts',
     ],
   },
   eslint.configs.recommended,
