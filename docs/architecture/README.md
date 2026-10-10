@@ -4,14 +4,14 @@
 
 Single deployable codebase with strict internal boundaries:
 
-| Module | Location | Role |
-|--------|----------|------|
-| Web | `apps/web` | UI, rendering, client state (non-authoritative) |
-| API | `apps/api` | Auth, sessions, moves, validation, persistence |
-| Game rules | `packages/game-core`, `games/*` | Deterministic rules, no I/O |
-| Shared | `packages/shared` | Cross-cutting types (errors, notifications interfaces) |
-| UI | `packages/ui` | Presentation primitives |
-| Database | `database` | Drizzle schema and migrations |
+| Module     | Location                        | Role                                                   |
+| ---------- | ------------------------------- | ------------------------------------------------------ |
+| Web        | `apps/web`                      | UI, rendering, client state (non-authoritative)        |
+| API        | `apps/api`                      | Auth, sessions, moves, validation, persistence         |
+| Game rules | `packages/game-core`, `games/*` | Deterministic rules, no I/O                            |
+| Shared     | `packages/shared`               | Cross-cutting types (errors, notifications interfaces) |
+| UI         | `packages/ui`                   | Presentation primitives                                |
+| Database   | `database`                      | Drizzle schema and migrations                          |
 
 No microservices, Kafka, or Kubernetes in Phase 0.
 
@@ -38,16 +38,16 @@ The client never decides legality, winner, or final score.
 
 PostgreSQL + Drizzle. Core entities:
 
-| Entity | Responsibility |
-|--------|----------------|
-| `users` | Private platform account |
-| `gaming_profiles` | Public gaming persona (username, avatar) |
-| `external_identities` | Provider mapping (WhatsApp, etc.) — private |
-| `games` | Registered game metadata |
-| `game_sessions` | Session lifecycle, JSONB state, version, status |
-| `game_players` | Membership and seats |
-| `game_moves` | Append-only move log |
-| `game_messages` | In-game chat (future) |
+| Entity                | Responsibility                                  |
+| --------------------- | ----------------------------------------------- |
+| `users`               | Private platform account                        |
+| `gaming_profiles`     | Public gaming persona (username, avatar)        |
+| `external_identities` | Provider mapping (WhatsApp, etc.) — private     |
+| `games`               | Registered game metadata                        |
+| `game_sessions`       | Session lifecycle, JSONB state, version, status |
+| `game_players`        | Membership and seats                            |
+| `game_moves`          | Append-only move log                            |
+| `game_messages`       | In-game chat (future)                           |
 
 **JSONB for game state:** Game-specific shapes evolve per title. Normalizing every field upfront would slow iteration and couple the schema to one game. Versioned JSONB keeps the session model stable while rules live in TypeScript. Normalize selectively when query/reporting needs justify it.
 

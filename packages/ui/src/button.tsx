@@ -6,10 +6,8 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantClasses: Record<NonNullable<ButtonProps['variant']>, string> = {
-  primary:
-    'bg-neutral-900 text-white hover:bg-neutral-800 disabled:opacity-50',
-  secondary:
-    'bg-neutral-100 text-neutral-900 hover:bg-neutral-200 disabled:opacity-50',
+  primary: 'bg-neutral-900 text-white hover:bg-neutral-800 disabled:opacity-50',
+  secondary: 'bg-neutral-100 text-neutral-900 hover:bg-neutral-200 disabled:opacity-50',
 };
 
 export function Button({

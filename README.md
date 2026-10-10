@@ -42,15 +42,15 @@ yarn install
 
 ## Development
 
-| Command        | Description                          |
-| -------------- | ------------------------------------ |
-| `yarn dev`     | Web (3000) + API (4000)              |
-| `yarn build`   | Build all workspaces                 |
-| `yarn test`    | Unit tests (Vitest)                  |
-| `yarn test:e2e`| Playwright (web shell)               |
-| `yarn lint`    | ESLint                               |
-| `yarn typecheck` | TypeScript project references      |
-| `yarn check`   | format + lint + typecheck + test + build |
+| Command          | Description                              |
+| ---------------- | ---------------------------------------- |
+| `yarn dev`       | Web (3000) + API (4000)                  |
+| `yarn build`     | Build all workspaces                     |
+| `yarn test`      | Unit tests (Vitest)                      |
+| `yarn test:e2e`  | Playwright (web shell)                   |
+| `yarn lint`      | ESLint                                   |
+| `yarn typecheck` | TypeScript project references            |
+| `yarn check`     | format + lint + typecheck + test + build |
 
 API health: `GET http://localhost:4000/health` → `{ "status": "ok" }`
 
