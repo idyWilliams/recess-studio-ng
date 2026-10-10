@@ -15,6 +15,13 @@
       "when": 1791655521380,
       "tag": "0001_fair_joseph",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791656980729,
+      "tag": "0002_misty_zaran",
+      "breakpoints": true
     }
   ]
 }

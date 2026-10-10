@@ -19,4 +19,15 @@ export {
   type TurnNotification,
 } from './notifications.js';
 export { type PlayerPresence, type PlayerPresenceStatus } from './presence.js';
+export {
+  createSessionSchema,
+  joinSessionSchema,
+  submitMoveSchema,
+  type CreateSessionInput,
+  type GameSessionPlayer,
+  type GameSessionResponse,
+  type GameSessionStatus,
+  type JoinSessionInput,
+  type SubmitMoveInput,
+} from './sessions.js';
 export { type GameStats, type PlayerStats } from './stats.js';
