@@ -1,5 +1,17 @@
 export { ApiErrorCode, type ApiErrorBody } from './errors.js';
 export {
+  createGamingProfileSchema,
+  registerUserSchema,
+  updateGamingProfileSchema,
+  USERNAME_REGEX,
+  type AuthUserResponse,
+  type CreateGamingProfileInput,
+  type GamingProfile,
+  type RegisterUserInput,
+  type UpdateGamingProfileInput,
+  type UserAccount,
+} from './identity.js';
+export {
   type GameInviteNotification,
   type GameResultNotification,
   type NotificationProvider,

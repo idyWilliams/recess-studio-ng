@@ -10,6 +10,8 @@ export const ApiErrorCode = {
   RATE_LIMITED: 'RATE_LIMITED',
   UNAUTHORIZED: 'UNAUTHORIZED',
   FORBIDDEN: 'FORBIDDEN',
+  INVALID_INPUT: 'INVALID_INPUT',
+  USERNAME_TAKEN: 'USERNAME_TAKEN',
 } as const;
 
 export type ApiErrorCode = (typeof ApiErrorCode)[keyof typeof ApiErrorCode];
