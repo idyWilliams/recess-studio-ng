@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: recess-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: recess
+      POSTGRES_PASSWORD: recess
+      POSTGRES_DB: recess
+    volumes:
+      - recess_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U recess -d recess"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  recess_pg_data:

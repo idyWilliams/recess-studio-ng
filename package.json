@@ -1,0 +1,38 @@
+{
+  "name": "recess-studio-ng",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "games/*",
+    "database"
+  ],
+  "scripts": {
+    "dev": "concurrently -n web,api -c cyan,magenta \"yarn workspace @recess/web dev\" \"yarn workspace @recess/api dev\"",
+    "build": "yarn workspace @recess/shared build && yarn workspace @recess/game-core build && yarn workspace @recess/ui build && yarn workspace @recess/game-word-battle build && yarn workspace @recess/database build && yarn workspace @recess/api build && yarn workspace @recess/web build",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:e2e": "yarn workspace @recess/web test:e2e",
+    "lint": "eslint .",
+    "typecheck": "tsc -b && yarn workspace @recess/api typecheck && yarn workspace @recess/web typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "yarn format:check && yarn lint && yarn typecheck && yarn test && yarn build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/node": "^22.10.2",
+    "concurrently": "^9.1.2",
+    "eslint": "^9.17.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.2",
+    "vitest": "^2.1.8"
+  },
+  "packageManager": "yarn@1.22.22",
+  "engines": {
+    "node": ">=20"
+  }
+}

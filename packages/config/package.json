@@ -1,0 +1,12 @@
+{
+  "name": "@recess/config",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./typescript/base": "./typescript/base.json",
+    "./typescript/node": "./typescript/node.json",
+    "./typescript/react": "./typescript/react.json",
+    "./eslint": "./eslint/index.mjs"
+  }
+}
