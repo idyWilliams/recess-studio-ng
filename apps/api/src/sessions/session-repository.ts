@@ -71,11 +71,16 @@ export interface SessionRepository {
   }): Promise<SessionWithPlayers>;
 }
 
+type DbOrTx = Database | Parameters<Parameters<Database['transaction']>[0]>[0];
+
 export class PostgresSessionRepository implements SessionRepository {
   constructor(private db: Database) {}
 
-  private async getPlayersForSession(sessionId: string): Promise<PlayerRecord[]> {
-    const rows = await this.db
+  private async getPlayersForSession(
+    sessionId: string,
+    executor: DbOrTx = this.db,
+  ): Promise<PlayerRecord[]> {
+    const rows = await executor
       .select({
         id: gamePlayers.id,
         sessionId: gamePlayers.sessionId,
@@ -110,45 +115,47 @@ export class PostgresSessionRepository implements SessionRepository {
     creatorUserId: string;
     creatorSeat: string;
   }): Promise<SessionWithPlayers> {
-    const [insertedSession] = await this.db
-      .insert(gameSessions)
-      .values({
-        publicId: data.publicId,
-        gameId: data.gameId,
-        status: data.status,
-        state: data.state as Record<string, unknown>,
-        stateVersion: data.stateVersion,
-        currentPlayerId: data.currentPlayerId,
-      })
-      .returning();
+    return await this.db.transaction(async (tx) => {
+      const [insertedSession] = await tx
+        .insert(gameSessions)
+        .values({
+          publicId: data.publicId,
+          gameId: data.gameId,
+          status: data.status,
+          state: data.state as Record<string, unknown>,
+          stateVersion: data.stateVersion,
+          currentPlayerId: data.currentPlayerId,
+        })
+        .returning();
 
-    if (!insertedSession) {
-      throw new Error('Failed to insert game session');
-    }
+      if (!insertedSession) {
+        throw new Error('Failed to insert game session');
+      }
 
-    await this.db.insert(gamePlayers).values({
-      sessionId: insertedSession.id,
-      userId: data.creatorUserId,
-      seat: data.creatorSeat,
+      await tx.insert(gamePlayers).values({
+        sessionId: insertedSession.id,
+        userId: data.creatorUserId,
+        seat: data.creatorSeat,
+      });
+
+      const players = await this.getPlayersForSession(insertedSession.id, tx);
+
+      return {
+        id: insertedSession.id,
+        publicId: insertedSession.publicId,
+        gameId: insertedSession.gameId,
+        status: insertedSession.status,
+        state: insertedSession.state,
+        stateVersion: insertedSession.stateVersion,
+        currentPlayerId: insertedSession.currentPlayerId,
+        result: insertedSession.result,
+        startedAt: insertedSession.startedAt?.toISOString() ?? null,
+        completedAt: insertedSession.completedAt?.toISOString() ?? null,
+        createdAt: insertedSession.createdAt.toISOString(),
+        updatedAt: insertedSession.updatedAt.toISOString(),
+        players,
+      };
     });
-
-    const players = await this.getPlayersForSession(insertedSession.id);
-
-    return {
-      id: insertedSession.id,
-      publicId: insertedSession.publicId,
-      gameId: insertedSession.gameId,
-      status: insertedSession.status,
-      state: insertedSession.state,
-      stateVersion: insertedSession.stateVersion,
-      currentPlayerId: insertedSession.currentPlayerId,
-      result: insertedSession.result,
-      startedAt: insertedSession.startedAt?.toISOString() ?? null,
-      completedAt: insertedSession.completedAt?.toISOString() ?? null,
-      createdAt: insertedSession.createdAt.toISOString(),
-      updatedAt: insertedSession.updatedAt.toISOString(),
-      players,
-    };
   }
 
   async findSessionByPublicId(publicId: string): Promise<SessionWithPlayers | null> {
@@ -212,34 +219,50 @@ export class PostgresSessionRepository implements SessionRepository {
     userId: string,
     seat: string,
   ): Promise<PlayerRecord> {
-    const [inserted] = await this.db
-      .insert(gamePlayers)
-      .values({
-        sessionId,
-        userId,
-        seat,
-      })
-      .returning();
+    try {
+      const [inserted] = await this.db
+        .insert(gamePlayers)
+        .values({
+          sessionId,
+          userId,
+          seat,
+        })
+        .returning();
 
-    if (!inserted) {
-      throw new Error('Failed to insert game player');
+      if (!inserted) {
+        throw new Error('Failed to insert game player');
+      }
+
+      const [profile] = await this.db
+        .select()
+        .from(gamingProfiles)
+        .where(eq(gamingProfiles.userId, userId))
+        .limit(1);
+
+      return {
+        id: inserted.id,
+        sessionId: inserted.sessionId,
+        userId: inserted.userId,
+        username: profile?.username ?? 'Unknown',
+        avatarUrl: profile?.avatarUrl ?? null,
+        seat: inserted.seat,
+        joinedAt: inserted.joinedAt.toISOString(),
+      };
+    } catch (err: unknown) {
+      if (
+        typeof err === 'object' &&
+        err !== null &&
+        'code' in err &&
+        (err as { code: string }).code === '23505'
+      ) {
+        throw new AppError(
+          'INVALID_INPUT',
+          'Player is already enrolled or seat is already occupied',
+          409,
+        );
+      }
+      throw err;
     }
-
-    const [profile] = await this.db
-      .select()
-      .from(gamingProfiles)
-      .where(eq(gamingProfiles.userId, userId))
-      .limit(1);
-
-    return {
-      id: inserted.id,
-      sessionId: inserted.sessionId,
-      userId: inserted.userId,
-      username: profile?.username ?? 'Unknown',
-      avatarUrl: profile?.avatarUrl ?? null,
-      seat: inserted.seat,
-      joinedAt: inserted.joinedAt.toISOString(),
-    };
   }
 
   async startSession(
@@ -256,7 +279,7 @@ export class PostgresSessionRepository implements SessionRepository {
         startedAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(gameSessions.id, sessionId));
+      .where(and(eq(gameSessions.id, sessionId), eq(gameSessions.status, 'waiting')));
   }
 
   async applyMove(data: {
@@ -272,62 +295,64 @@ export class PostgresSessionRepository implements SessionRepository {
     const newVersion = data.expectedVersion + 1;
     const now = new Date();
 
-    const [updated] = await this.db
-      .update(gameSessions)
-      .set({
-        state: data.nextState as Record<string, unknown>,
-        stateVersion: newVersion,
-        currentPlayerId: data.nextPlayerId,
-        status: data.isGameOver ? 'completed' : 'active',
-        result: data.result as Record<string, unknown> | null,
-        completedAt: data.isGameOver ? now : null,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(gameSessions.id, data.sessionId),
-          eq(gameSessions.stateVersion, data.expectedVersion),
-        ),
-      )
-      .returning();
+    return await this.db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(gameSessions)
+        .set({
+          state: data.nextState as Record<string, unknown>,
+          stateVersion: newVersion,
+          currentPlayerId: data.nextPlayerId,
+          status: data.isGameOver ? 'completed' : 'active',
+          result: data.result as Record<string, unknown> | null,
+          completedAt: data.isGameOver ? now : null,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(gameSessions.id, data.sessionId),
+            eq(gameSessions.stateVersion, data.expectedVersion),
+          ),
+        )
+        .returning();
 
-    if (!updated) {
-      const [current] = await this.db
-        .select({ stateVersion: gameSessions.stateVersion })
-        .from(gameSessions)
-        .where(eq(gameSessions.id, data.sessionId));
+      if (!updated) {
+        const [current] = await tx
+          .select({ stateVersion: gameSessions.stateVersion })
+          .from(gameSessions)
+          .where(eq(gameSessions.id, data.sessionId));
 
-      throw new AppError(
-        'STALE_GAME_STATE',
-        `State version conflict. Current version is ${current?.stateVersion ?? 'unknown'}, expected ${data.expectedVersion}`,
-        409,
-      );
-    }
+        throw new AppError(
+          'STALE_GAME_STATE',
+          `State version conflict. Current version is ${current?.stateVersion ?? 'unknown'}, expected ${data.expectedVersion}`,
+          409,
+        );
+      }
 
-    await this.db.insert(gameMoves).values({
-      sessionId: data.sessionId,
-      userId: data.userId,
-      move: data.move as Record<string, unknown>,
-      stateVersionAfter: newVersion,
+      await tx.insert(gameMoves).values({
+        sessionId: data.sessionId,
+        userId: data.userId,
+        move: data.move as Record<string, unknown>,
+        stateVersionAfter: newVersion,
+      });
+
+      const players = await this.getPlayersForSession(data.sessionId, tx);
+
+      return {
+        id: updated.id,
+        publicId: updated.publicId,
+        gameId: updated.gameId,
+        status: updated.status,
+        state: updated.state,
+        stateVersion: updated.stateVersion,
+        currentPlayerId: updated.currentPlayerId,
+        result: updated.result,
+        startedAt: updated.startedAt?.toISOString() ?? null,
+        completedAt: updated.completedAt?.toISOString() ?? null,
+        createdAt: updated.createdAt.toISOString(),
+        updatedAt: updated.updatedAt.toISOString(),
+        players,
+      };
     });
-
-    const players = await this.getPlayersForSession(data.sessionId);
-
-    return {
-      id: updated.id,
-      publicId: updated.publicId,
-      gameId: updated.gameId,
-      status: updated.status,
-      state: updated.state,
-      stateVersion: updated.stateVersion,
-      currentPlayerId: updated.currentPlayerId,
-      result: updated.result,
-      startedAt: updated.startedAt?.toISOString() ?? null,
-      completedAt: updated.completedAt?.toISOString() ?? null,
-      createdAt: updated.createdAt.toISOString(),
-      updatedAt: updated.updatedAt.toISOString(),
-      players,
-    };
   }
 }
 
@@ -404,6 +429,13 @@ export class InMemorySessionRepository implements SessionRepository {
     seat: string,
   ): Promise<PlayerRecord> {
     const sessionPlayers = this.players.get(sessionId) ?? [];
+    if (sessionPlayers.some((p) => p.userId === userId)) {
+      throw new AppError('INVALID_INPUT', 'Player is already in this session', 409);
+    }
+    if (sessionPlayers.some((p) => p.seat === seat)) {
+      throw new AppError('INVALID_INPUT', 'Seat is already occupied', 409);
+    }
+
     const player: PlayerRecord = {
       id: crypto.randomUUID(),
       sessionId,
@@ -424,6 +456,7 @@ export class InMemorySessionRepository implements SessionRepository {
   ): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('Session not found');
+    if (session.status !== 'waiting') return; // idempotency guard
     session.status = 'active';
     session.state = state;
     session.currentPlayerId = currentPlayerId;

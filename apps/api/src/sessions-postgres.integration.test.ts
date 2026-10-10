@@ -236,6 +236,76 @@ describe('PostgreSQL Game Sessions & Turn Concurrency Integration', () => {
     await app.close();
   });
 
+  it('rejects concurrent join attempts on the last seat via PostgreSQL unique constraints', async () => {
+    if (!canConnect) return;
+
+    const env = {
+      PORT: 3005,
+      NODE_ENV: 'test' as const,
+      DATABASE_URL: TEST_DATABASE_URL,
+    };
+    const identityService = new IdentityService(new PostgresIdentityRepository(db));
+    const gameRegistry = new GameRegistry();
+    const sessionService = new SessionService(
+      new PostgresSessionRepository(db),
+      gameRegistry,
+    );
+    const app = buildApp(env, identityService, sessionService, gameRegistry);
+
+    const tag = `${Date.now().toString(36)}_cj`;
+    const p1 = (
+      await app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: { username: `C1_${tag}` },
+      })
+    ).json();
+    const p2 = (
+      await app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: { username: `C2_${tag}` },
+      })
+    ).json();
+    const p3 = (
+      await app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: { username: `C3_${tag}` },
+      })
+    ).json();
+
+    const session = (
+      await app.inject({
+        method: 'POST',
+        url: '/game-sessions',
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { gameId: 'take-turn-demo' },
+      })
+    ).json();
+
+    // Two players (P2 and P3) simultaneously race to join seat 1 of a 2-player max game
+    const [join2, join3] = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: `/game-sessions/${session.publicId}/join`,
+        headers: { authorization: `Bearer ${p2.sessionToken}` },
+      }),
+      app.inject({
+        method: 'POST',
+        url: `/game-sessions/${session.publicId}/join`,
+        headers: { authorization: `Bearer ${p3.sessionToken}` },
+      }),
+    ]);
+
+    const codes = [join2.statusCode, join3.statusCode].sort();
+    // Exactly one joins (200), other is rejected (400 or 409)
+    expect(codes[0]).toBe(200);
+    expect([400, 409]).toContain(codes[1]);
+
+    await app.close();
+  });
+
   it('preserves session state and move history across API server restarts', async () => {
     if (!canConnect) return;
 
