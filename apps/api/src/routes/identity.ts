@@ -5,6 +5,28 @@ import type { RegisterUserInput } from '@recess/shared';
 import { AppError } from '../errors/app-error.js';
 import { IdentityService } from '../identity/identity-service.js';
 
+function extractSessionToken(
+  authHeader?: string,
+  sessionHeader?: string | string[],
+): string {
+  if (typeof sessionHeader === 'string' && sessionHeader.trim().length > 0) {
+    return sessionHeader.trim();
+  }
+
+  if (authHeader && typeof authHeader === 'string') {
+    const parts = authHeader.trim().split(' ');
+    if (parts.length === 2 && parts[0]?.toLowerCase() === 'bearer' && parts[1]) {
+      return parts[1];
+    }
+  }
+
+  throw new AppError(
+    'UNAUTHORIZED',
+    'Missing or invalid authorization token. Provide Authorization: Bearer <token>',
+    401,
+  );
+}
+
 export function registerIdentityRoutes(
   app: FastifyInstance,
   identityService: IdentityService = new IdentityService(),
@@ -17,15 +39,11 @@ export function registerIdentityRoutes(
 
   // GET /me
   app.get('/me', async (request) => {
-    const userId = request.headers['x-user-id'];
-    if (!userId || typeof userId !== 'string') {
-      throw new AppError(
-        'UNAUTHORIZED',
-        'Missing authentication header x-user-id',
-        401,
-      );
-    }
-    return identityService.getAuthUser(userId);
+    const authHeader = request.headers.authorization;
+    const sessionHeader = request.headers['x-session-token'];
+    const token = extractSessionToken(authHeader, sessionHeader);
+
+    return identityService.authenticate(token);
   });
 
   // GET /gaming-profiles/:id

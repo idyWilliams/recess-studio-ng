@@ -8,6 +8,13 @@
       "when": 1791652517580,
       "tag": "0000_dear_virginia_dare",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791655521380,
+      "tag": "0001_fair_joseph",
+      "breakpoints": true
     }
   ]
 }

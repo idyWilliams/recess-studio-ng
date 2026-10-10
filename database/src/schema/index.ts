@@ -10,3 +10,4 @@ export { gameSessions } from './game-sessions.js';
 export { gamePlayers } from './game-players.js';
 export { gameMoves } from './game-moves.js';
 export { gameMessages } from './game-messages.js';
+export { sessions } from './sessions.js';

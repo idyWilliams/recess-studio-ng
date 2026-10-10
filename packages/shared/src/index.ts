@@ -7,6 +7,7 @@ export {
   type AuthUserResponse,
   type CreateGamingProfileInput,
   type GamingProfile,
+  type RegisterResponse,
   type RegisterUserInput,
   type UpdateGamingProfileInput,
   type UserAccount,

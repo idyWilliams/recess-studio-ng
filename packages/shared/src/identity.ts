@@ -30,6 +30,16 @@ export interface AuthUserResponse {
   profile: GamingProfile;
 }
 
+/**
+ * Result returned upon successful registration, providing credentials/session token.
+ */
+export interface RegisterResponse {
+  user: UserAccount;
+  profile: GamingProfile;
+  sessionToken: string;
+  expiresAt: string;
+}
+
 export const USERNAME_REGEX = /^[a-zA-Z0-9_-]{3,32}$/;
 
 export const createGamingProfileSchema = z.object({
