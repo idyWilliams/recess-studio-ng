@@ -36,3 +36,5 @@ Out of scope until later phases: Game Houses, tournaments, developer marketplace
 - Game Friends, online/playing presence, in-game chat
 - Notifications abstracted from WhatsApp implementation details
 - Communities (Game Houses), tournaments, monetization
+
+See [roadmap.md](./roadmap.md) for the full feature traceability matrix, statistics calculation rules, and phase acceptance criteria.
