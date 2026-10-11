@@ -1,16 +1,17 @@
 import type { Metadata, Viewport } from 'next';
-
+import { AppHeader } from '@/components/navigation/AppHeader';
+import { BottomNav } from '@/components/navigation/BottomNav';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Recess',
-  description: 'Social multiplayer gaming platform',
+  title: 'Recess — Social Multiplayer Gaming',
+  description: 'Play. Connect. Compete. Mobile-first social games.',
 };
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#fafafa',
+  themeColor: '#FAF9F5',
 };
 
 export default function RootLayout({
@@ -20,7 +21,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="flex min-h-dvh flex-col bg-recess-cream text-recess-text-primary antialiased">
+        <AppHeader />
+        <div className="flex-1 pb-24 sm:pb-12">{children}</div>
+        <BottomNav />
+      </body>
     </html>
   );
 }
