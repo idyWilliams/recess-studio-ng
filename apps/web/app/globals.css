@@ -4,8 +4,25 @@
 
 :root {
   color-scheme: light;
+  --font-recess:
+    -apple-system, BlinkMacSystemFont, 'Plus Jakarta Sans', 'Inter', 'Segoe UI', Roboto,
+    sans-serif;
 }
 
 body {
-  @apply min-h-dvh bg-neutral-50 text-neutral-900 antialiased;
+  font-family: var(--font-recess);
+  @apply min-h-dvh bg-recess-cream text-recess-text-primary antialiased;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
