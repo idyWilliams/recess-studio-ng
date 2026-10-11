@@ -16,12 +16,14 @@ import {
 
 import { AppError } from '../errors/app-error.js';
 import { GameRegistry } from '../games/game-registry.js';
+import { dictionaryApiValidator, type WordValidator } from '../games/word-validator.js';
 import type { SessionRepository, SessionWithPlayers } from './session-repository.js';
 
 export class SessionService {
   constructor(
     private repo: SessionRepository,
     private gameRegistry: GameRegistry = new GameRegistry(),
+    private wordValidator: WordValidator = dictionaryApiValidator,
   ) {}
 
   private mapResponse(session: SessionWithPlayers): GameSessionResponse {
@@ -226,6 +228,18 @@ export class SessionService {
         'Game definition not found in registry',
         500,
       );
+    }
+
+    // 5.1 Game-specific API boundary validations (e.g. dictionary lookups)
+    if (session.gameId === 'word-battle') {
+      const word = (input.move as { word?: unknown })?.word;
+      if (typeof word !== 'string' || word.trim().length === 0) {
+        throw new AppError('INVALID_MOVE', 'Word must be a non-empty string', 400);
+      }
+      const isValid = await this.wordValidator.isValidWord(word);
+      if (!isValid) {
+        throw new AppError('INVALID_MOVE', `"${word}" is not a recognized word`, 400);
+      }
     }
 
     // 6. Server-authoritative move validation

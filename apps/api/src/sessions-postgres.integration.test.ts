@@ -61,6 +61,17 @@ describe('PostgreSQL Game Sessions & Turn Concurrency Integration', () => {
     expect(catalogGame).toBeDefined();
     expect(catalogGame?.name).toBe('Take Turn Demo');
     expect(catalogGame?.isActive).toBe(true);
+
+    const [wordBattleGame] = await db
+      .select()
+      .from(games)
+      .where(eq(games.id, 'word-battle'));
+
+    expect(wordBattleGame).toBeDefined();
+    expect(wordBattleGame?.name).toBe('Word Battle');
+    expect(wordBattleGame?.minPlayers).toBe(2);
+    expect(wordBattleGame?.maxPlayers).toBe(2);
+    expect(wordBattleGame?.isActive).toBe(true);
   });
 
   it('persists session creation and player joining in PostgreSQL', async () => {

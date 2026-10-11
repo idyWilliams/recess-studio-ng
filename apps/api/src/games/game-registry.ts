@@ -1,6 +1,8 @@
 import type { GameDefinition } from '@recess/game-core';
 import { games, type Database } from '@recess/database';
 
+import { wordBattleGame } from '@recess/game-word-battle';
+
 import { demoGame } from './demo-game.js';
 
 export class GameRegistry {
@@ -9,6 +11,7 @@ export class GameRegistry {
 
   constructor() {
     this.register(demoGame);
+    this.register(wordBattleGame);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
