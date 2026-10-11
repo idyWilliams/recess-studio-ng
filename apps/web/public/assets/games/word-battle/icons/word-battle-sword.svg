@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" fill="none">
+  <defs>
+    <linearGradient id="blade-grad-1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="50%" stop-color="#CBD5E1" />
+      <stop offset="100%" stop-color="#94A3B8" />
+    </linearGradient>
+    <linearGradient id="blade-grad-2" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#E2E8F0" />
+      <stop offset="50%" stop-color="#94A3B8" />
+      <stop offset="100%" stop-color="#64748B" />
+    </linearGradient>
+    <linearGradient id="hilt-gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FCD34D" />
+      <stop offset="100%" stop-color="#D97706" />
+    </linearGradient>
+  </defs>
+
+  <!-- Sword 1 (Crossing Left to Right) -->
+  <g transform="rotate(45 16 16)">
+    <path d="M 15 3 L 17 3 L 17 21 L 15 21 Z" fill="url(#blade-grad-1)" />
+    <path d="M 16 1 L 17 3 L 15 3 Z" fill="#FFFFFF" />
+    <path d="M 11 20 L 21 20 L 21 22 L 11 22 Z" rx="1" fill="url(#hilt-gold)" />
+    <path d="M 15 22 L 17 22 L 17 28 L 15 28 Z" fill="#78350F" />
+    <circle cx="16" cy="29" r="1.5" fill="url(#hilt-gold)" />
+  </g>
+
+  <!-- Sword 2 (Crossing Right to Left) -->
+  <g transform="rotate(-45 16 16)">
+    <path d="M 15 3 L 17 3 L 17 21 L 15 21 Z" fill="url(#blade-grad-2)" />
+    <path d="M 16 1 L 17 3 L 15 3 Z" fill="#FFFFFF" />
+    <path d="M 11 20 L 21 20 L 21 22 L 11 22 Z" rx="1" fill="url(#hilt-gold)" />
+    <path d="M 15 22 L 17 22 L 17 28 L 15 28 Z" fill="#78350F" />
+    <circle cx="16" cy="29" r="1.5" fill="url(#hilt-gold)" />
+  </g>
+</svg>

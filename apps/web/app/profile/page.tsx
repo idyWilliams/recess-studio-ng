@@ -21,6 +21,7 @@ export default function ProfilePage() {
       <section className="flex flex-col items-center rounded-2xl border border-recess-cream-border bg-white p-6 shadow-card text-center">
         <Avatar
           username={profile.username}
+          avatarUrl="/assets/shared/avatars/avatar-chidi.svg"
           size="xl"
           presence="online"
           className="ring-4 ring-recess-purple/15"

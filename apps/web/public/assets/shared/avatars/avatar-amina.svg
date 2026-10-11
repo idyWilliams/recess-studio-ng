@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" width="80" height="80">
+  <defs>
+    <linearGradient id="bg-amina" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F59E0B" />
+      <stop offset="100%" stop-color="#EC4899" />
+    </linearGradient>
+  </defs>
+  <rect width="80" height="80" rx="40" fill="url(#bg-amina)" />
+  <circle cx="40" cy="39" r="18" fill="#FCD34D" opacity="0.95" />
+  <!-- Afro Puffs -->
+  <circle cx="21" cy="24" r="11" fill="#18181B" />
+  <circle cx="59" cy="24" r="11" fill="#18181B" />
+  <path d="M 23 35 C 26 25 54 25 57 35 Z" fill="#18181B" />
+  <!-- Gold Earrings -->
+  <circle cx="22" cy="42" r="3" fill="#FBBF24" />
+  <circle cx="58" cy="42" r="3" fill="#FBBF24" />
+  <!-- Eyes -->
+  <circle cx="34" cy="40" r="2.2" fill="#18181B" />
+  <circle cx="46" cy="40" r="2.2" fill="#18181B" />
+  <path d="M 35 46 Q 40 50 45 46" stroke="#18181B" stroke-width="2" stroke-linecap="round" fill="none" />
+  <path d="M 16 74 C 18 58 62 58 64 74 Z" fill="#EDE9FE" />
+</svg>

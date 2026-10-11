@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" width="80" height="80">
+  <defs>
+    <linearGradient id="bg-tunde" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1B76FF" />
+      <stop offset="100%" stop-color="#10B981" />
+    </linearGradient>
+  </defs>
+  <rect width="80" height="80" rx="40" fill="url(#bg-tunde)" />
+  <circle cx="40" cy="38" r="18" fill="#F59E0B" opacity="0.95" />
+  <!-- Sleek Hair / Headband -->
+  <path d="M 23 31 C 25 21 55 21 57 31 Z" fill="#0F172A" />
+  <rect x="22" y="30" width="36" height="5" rx="2.5" fill="#10B981" />
+  <!-- Eyes -->
+  <circle cx="34" cy="40" r="2.2" fill="#0F172A" />
+  <circle cx="46" cy="40" r="2.2" fill="#0F172A" />
+  <path d="M 36 46 Q 40 49 44 46" stroke="#0F172A" stroke-width="2" stroke-linecap="round" fill="none" />
+  <path d="M 16 74 C 18 58 62 58 64 74 Z" fill="#1E293B" />
+</svg>

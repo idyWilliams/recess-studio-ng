@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" fill="none">
+  <defs>
+    <radialGradient id="spark-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="40%" stop-color="#FDE68A" />
+      <stop offset="70%" stop-color="#F59E0B" />
+      <stop offset="100%" stop-color="#F59E0B" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <!-- 4-point Diamond Starburst -->
+  <path
+    d="M 24 2 C 24 16 26 22 46 24 C 26 26 24 32 24 46 C 24 32 22 26 2 24 C 22 22 24 16 24 2 Z"
+    fill="url(#spark-glow)"
+  />
+  <circle cx="24" cy="24" r="3.5" fill="#FFFFFF" />
+
+  <!-- Diagonal Tiny Glints -->
+  <circle cx="10" cy="10" r="1.5" fill="#FEF3C7" opacity="0.8" />
+  <circle cx="38" cy="10" r="1.5" fill="#FEF3C7" opacity="0.8" />
+  <circle cx="10" cy="38" r="1.5" fill="#FEF3C7" opacity="0.8" />
+  <circle cx="38" cy="38" r="1.5" fill="#FEF3C7" opacity="0.8" />
+</svg>

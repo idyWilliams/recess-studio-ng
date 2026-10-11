@@ -16,6 +16,7 @@ export function ActiveTurnHero() {
         playerOne={{
           id: 'p1',
           username: 'Chidi',
+          avatarUrl: '/assets/shared/avatars/avatar-chidi.svg',
           score: 18,
           presence: 'online',
           isCurrentTurn: true,
@@ -23,6 +24,7 @@ export function ActiveTurnHero() {
         playerTwo={{
           id: 'p2',
           username: 'Tunde',
+          avatarUrl: '/assets/shared/avatars/avatar-tunde.svg',
           score: 15,
           presence: 'in_game',
         }}

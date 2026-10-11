@@ -65,10 +65,14 @@ export function PvPMatchup({
             />
             {playerOne.isWinner && (
               <span
-                className="absolute -top-1.5 -right-1 text-xs select-none"
+                className="absolute -top-2 -right-1.5 select-none"
                 title="Winner"
               >
-                👑
+                <img
+                  src="/assets/games/word-battle/icons/word-battle-crown.svg"
+                  alt="Winner"
+                  className="h-4 w-4 drop-shadow-sm"
+                />
               </span>
             )}
           </div>
@@ -138,10 +142,14 @@ export function PvPMatchup({
                 />
                 {playerTwo.isWinner && (
                   <span
-                    className="absolute -top-1.5 -right-1 text-xs select-none"
+                    className="absolute -top-2 -right-1.5 select-none"
                     title="Winner"
                   >
-                    👑
+                    <img
+                      src="/assets/games/word-battle/icons/word-battle-crown.svg"
+                      alt="Winner"
+                      className="h-4 w-4 drop-shadow-sm"
+                    />
                   </span>
                 )}
               </div>

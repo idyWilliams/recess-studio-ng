@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" width="100%" height="100%">
+  <defs>
+    <linearGradient id="tile-selected-bevel" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#8F62FF" />
+      <stop offset="100%" stop-color="#5824EE" />
+    </linearGradient>
+    <linearGradient id="tile-selected-surface" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#7B49FF" />
+      <stop offset="100%" stop-color="#642EFE" />
+    </linearGradient>
+    <filter id="tile-purple-glow" x="-20%" y="-20%" width="140%" height="145%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#6C38FF" flood-opacity="0.6" />
+    </filter>
+  </defs>
+
+  <!-- Glowing Shadow & Bevel -->
+  <rect x="4" y="3" width="72" height="72" rx="14" fill="url(#tile-selected-bevel)" filter="url(#tile-purple-glow)" />
+
+  <!-- Raised Vibrant Surface -->
+  <rect x="5" y="4" width="70" height="69" rx="13" fill="url(#tile-selected-surface)" stroke="#A785FF" stroke-width="1.2" />
+
+  <!-- Bright Specular Highlight Edge -->
+  <path d="M 17 5 L 63 5" stroke="#FFFFFF" stroke-opacity="0.45" stroke-width="2" stroke-linecap="round" />
+</svg>

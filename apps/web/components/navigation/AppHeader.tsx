@@ -33,9 +33,13 @@ export function AppHeader() {
 
         <Link
           href="/profile"
-          className="flex items-center gap-2 rounded-full border border-recess-cream-border bg-white px-3 py-1 text-xs font-semibold text-recess-text-primary shadow-sm transition-all hover:border-recess-purple"
+          className="flex items-center gap-2 rounded-full border border-recess-cream-border bg-white py-1 pl-1.5 pr-3 text-xs font-semibold text-recess-text-primary shadow-sm transition-all hover:border-recess-purple"
         >
-          <span className="h-2 w-2 rounded-full bg-recess-green animate-pulse" />
+          <img
+            src="/assets/shared/avatars/avatar-chidi.svg"
+            alt="Chidi"
+            className="h-5 w-5 rounded-full"
+          />
           <span>Chidi</span>
           <span className="rounded bg-recess-purple-light px-1 text-[10px] font-bold text-recess-purple">
             1420

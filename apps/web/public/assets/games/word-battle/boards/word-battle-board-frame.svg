@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="100%" height="100%">
+  <defs>
+    <linearGradient id="frame-border" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3A4866" />
+      <stop offset="50%" stop-color="#252F47" />
+      <stop offset="100%" stop-color="#1E273E" />
+    </linearGradient>
+    <linearGradient id="frame-inner" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#161D2F" />
+      <stop offset="100%" stop-color="#101524" />
+    </linearGradient>
+    <filter id="frame-shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.45" />
+    </filter>
+  </defs>
+
+  <!-- Outer Shadow & Base Frame -->
+  <rect x="12" y="12" width="376" height="376" rx="28" fill="url(#frame-border)" filter="url(#frame-shadow)" />
+
+  <!-- Inner Recessed Arena Playfield -->
+  <rect x="16" y="16" width="368" height="368" rx="24" fill="url(#frame-inner)" stroke="#252F47" stroke-width="1.5" />
+
+  <!-- Subtle Top Highlight Bevel -->
+  <path d="M 40 18 L 360 18" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="2" stroke-linecap="round" />
+
+  <!-- Corner Rivets / Accents -->
+  <circle cx="36" cy="36" r="3" fill="#6C38FF" opacity="0.6" />
+  <circle cx="364" cy="36" r="3" fill="#6C38FF" opacity="0.6" />
+  <circle cx="36" cy="364" r="3" fill="#6C38FF" opacity="0.6" />
+  <circle cx="364" cy="364" r="3" fill="#6C38FF" opacity="0.6" />
+</svg>

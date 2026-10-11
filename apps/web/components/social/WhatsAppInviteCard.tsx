@@ -20,8 +20,12 @@ export function WhatsAppInviteCard() {
       className="rounded-2xl border border-recess-cream-border bg-white p-5 shadow-card"
     >
       <div className="flex items-start gap-3.5">
-        <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 text-xl shadow-sm">
-          💬
+        <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 shadow-sm">
+          <img
+            src="/assets/shared/icons/icon-whatsapp.svg"
+            alt="WhatsApp"
+            className="h-6 w-6 text-emerald-600"
+          />
         </div>
         <div className="min-w-0">
           <h3 className="text-sm font-bold text-recess-text-primary">

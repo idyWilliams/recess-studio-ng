@@ -4,6 +4,7 @@ import { WhatsAppInviteCard } from '@/components/social/WhatsAppInviteCard';
 interface FriendEntry {
   id: string;
   username: string;
+  avatarUrl: string;
   rating: number;
   presence: 'online' | 'in_game' | 'offline';
   statusText: string;
@@ -13,6 +14,7 @@ const mockFriends: FriendEntry[] = [
   {
     id: 'f1',
     username: 'Tunde',
+    avatarUrl: '/assets/shared/avatars/avatar-tunde.svg',
     rating: 1485,
     presence: 'in_game',
     statusText: 'In match • Word Battle',
@@ -20,6 +22,7 @@ const mockFriends: FriendEntry[] = [
   {
     id: 'f2',
     username: 'Amina',
+    avatarUrl: '/assets/shared/avatars/avatar-amina.svg',
     rating: 1390,
     presence: 'online',
     statusText: 'Online • Ready to play',
@@ -27,6 +30,7 @@ const mockFriends: FriendEntry[] = [
   {
     id: 'f3',
     username: 'Efe',
+    avatarUrl: '/assets/shared/avatars/avatar-efe.svg',
     rating: 1520,
     presence: 'offline',
     statusText: 'Last seen 2h ago',
@@ -64,6 +68,7 @@ export default function FriendsPage() {
             >
               <PlayerBadge
                 username={friend.username}
+                avatarUrl={friend.avatarUrl}
                 rating={friend.rating}
                 presence={friend.presence}
                 subtitle={friend.statusText}

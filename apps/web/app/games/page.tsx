@@ -22,8 +22,13 @@ export default function GamesPage() {
             tagline="Turn-based vocabulary showdown. Build words, outscore your opponent, and take the crown."
             badge="Featured • Live"
             playersLabel="2 Players • Async"
-            playLabel="Enter Word Battle Arena"
-            artworkIcon={<span className="text-2xl">⚔️</span>}
+            artworkIcon={
+              <img
+                src="/assets/games/word-battle/icons/word-battle-sword.svg"
+                alt="Word Battle Duel Swords"
+                className="h-6 w-6"
+              />
+            }
           />
         </Link>
 

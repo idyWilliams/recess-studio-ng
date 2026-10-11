@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" width="80" height="80">
+  <defs>
+    <linearGradient id="bg-efe" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10B981" />
+      <stop offset="100%" stop-color="#6366F1" />
+    </linearGradient>
+  </defs>
+  <rect width="80" height="80" rx="40" fill="url(#bg-efe)" />
+  <circle cx="40" cy="39" r="18" fill="#F59E0B" opacity="0.95" />
+  <!-- Hair & Gaming Headset -->
+  <path d="M 23 31 C 25 18 55 18 57 31 Z" fill="#1E293B" />
+  <!-- Headset band -->
+  <path d="M 18 39 C 16 14 64 14 62 39" stroke="#E2E8F0" stroke-width="4" stroke-linecap="round" fill="none" />
+  <!-- Headset earcups -->
+  <rect x="15" y="32" width="6" height="14" rx="3" fill="#6C38FF" />
+  <rect x="59" y="32" width="6" height="14" rx="3" fill="#6C38FF" />
+  <!-- Eyes -->
+  <circle cx="34" cy="40" r="2.2" fill="#1E293B" />
+  <circle cx="46" cy="40" r="2.2" fill="#1E293B" />
+  <path d="M 36 46 Q 40 49 44 46" stroke="#1E293B" stroke-width="2" stroke-linecap="round" fill="none" />
+  <path d="M 16 74 C 18 58 62 58 64 74 Z" fill="#334155" />
+</svg>
