@@ -16,12 +16,12 @@ This document defines the complete product vision for Recess, establishes full t
 | **6**  | **Online, Offline & In-Game Presence**                    | **Partially implemented**      | • Shared: `PlayerPresenceStatus` ('online', 'in_game', 'offline') and `PlayerPresence` interface in `@recess/shared/presence.ts`.<br>• _Pending:_ Presence state store (heartbeat table/Redis), socket gateway, presence endpoints.                                                                                                                                                                                                | Phase 4                                         |
 | **7**  | **Friends, Recent Opponents & Finding Players**           | **Documented only**            | • Architecture: Identified in `docs/architecture/README.md` and `docs/product/README.md`.<br>• _Pending:_ `friends` and `recent_opponents` DB tables, friend request API, public username search (`GET /gaming-profiles?search=`).                                                                                                                                                                                                 | Phase 5                                         |
 | **8**  | **Live Player Counts (Real Data Only)**                   | **Missing from documentation** | • Status: Mentioned in product discussions but omitted from technical specs.<br>• Architecture: Zero vanity/fake counters permitted. Must derive from active presence heartbeats / session membership.<br>• _Pending:_ Aggregation endpoint (`GET /metrics/live-players`).                                                                                                                                                         | Phase 4                                         |
-| **9**  | **Game Invites, Async Turns, Sessions & Notifications**   | **Partially implemented**      | • DB: `game_sessions`, `game_players`, `game_moves` tables and migrations in PostgreSQL.<br>• Shared: Notification payloads and `NotificationProvider` interface in `@recess/shared/notifications.ts`.<br>• _Pending:_ API session lifecycle routes (`POST /game-sessions`, `POST /game-sessions/:id/moves`), turn timeout watcher, notification sender.                                                                           | Phase 2                                         |
+| **9**  | **Game Invites, Async Turns, Sessions & Notifications**   | **Partially implemented**      | • DB: `game_sessions`, `game_players`, `game_moves` tables and migrations in PostgreSQL.<br>• API: Session lifecycle routes implemented (`POST /game-sessions`, `POST /game-sessions/:publicId/join`, `POST /game-sessions/:publicId/moves`) with `stateVersion` optimistic locking and atomic move commit.<br>• Shared: Notification payloads and `NotificationProvider` interface in `@recess/shared/notifications.ts`.<br>• _Pending:_ Turn timeout watcher, notification sender, real-time delivery.                                                                           | Phase 2 (routes done; notifications pending)                         |
 | **10** | **Matchmaking & Random Play**                             | **Documented only**            | • Architecture: Route `POST /matchmaking/queues` noted in architecture docs.<br>• _Pending:_ Queue pool, match pairing daemon, fallback to invite links.                                                                                                                                                                                                                                                                           | Phase 5                                         |
 | **11** | **Game Chat & Moderation**                                | **Partially implemented**      | • DB: `game_messages` table migrated in PostgreSQL (`id`, `sessionId`, `userId`, `body`, `createdAt`).<br>• _Pending:_ Chat API endpoints (`GET/POST /game-sessions/:id/messages`), WebSocket real-time delivery, message length/rate limiting, report flags.                                                                                                                                                                      | Phase 4                                         |
 | **12** | **WhatsApp Integration (Privacy-Preserved)**              | **Partially implemented**      | • Architecture: ADR-004 & ADR-005 strictly isolate WhatsApp to distribution transport.<br>• DB: `external_identities` table migrated with composite unique index on `(provider, external_subject_id)`.<br>• Security: Privacy tests verify external IDs/phone numbers are never leaked.<br>• _Pending:_ WhatsApp Cloud API webhook handler and adapter under `integrations/whatsapp`.                                              | Phase 5                                         |
 | **13** | **Game Houses, Tournaments, Achievements & Sponsorships** | **Planned for a later phase**  | • Architecture: Explicitly documented as out of scope for early phases.<br>• _Pending:_ House hierarchy schema, tournament bracket engine, achievement triggers, brand placements.                                                                                                                                                                                                                                                 | Phase 6                                         |
-| **14** | **Modular Pluggable Multi-Game Architecture**             | **Implemented and tested**     | • Packages: `@recess/game-core` with deterministic `GameDefinition<TState, TMove, TResult>` contract.<br>• Games: `games/word-battle` package bootstrapped.<br>• DB: `games` catalog table migrated.<br>• Tests: Deterministic unit tests passing.                                                                                                                                                                                 | Phase 0 (Complete) & Phase 2 (Runtime Registry) |
+| **14** | **Modular Pluggable Multi-Game Architecture**             | **Implemented and tested**     | • Packages: `@recess/game-core` with deterministic `GameDefinition<TState, TMove, TResult>` contract.<br>• Games: `games/word-battle` package implemented with full rules, scoring, turn engine, and game-over resolution.<br>• API: `GameRegistry` registering `demo-game` and `word-battle`; session service delegates move validation/execution to definitions.<br>• DB: `games` catalog table migrated.<br>• Tests: Deterministic unit tests passing.<br>• _Pending:_ Runtime dynamic game registry, third-party SDK.                                                                                                                                                                                 | Phase 0 (Complete) & Phase 2 (Runtime Registry) |
 
 ---
 
@@ -99,20 +99,21 @@ When an authoritative match completion event is processed for Player $p$ in game
   4. Integration tests run against live PostgreSQL and confirm constraint integrity.
 - **Status**: Implemented and verified in tests.
 
-### Phase 2 — Authoritative Game Sessions & Turn Engine (Next Increment)
+### Phase 2 — Authoritative Game Sessions & Turn Engine (In progress)
 
 - **Scope**:
-  - In-memory/database Game Registry mapping `gameId` to `GameDefinition` implementations.
-  - Session creation endpoint (`POST /game-sessions`).
-  - Session join endpoint (`POST /game-sessions/:id/join`).
-  - Authoritative move pipeline (`POST /game-sessions/:id/moves`) validating turns, game state transitions, and optimistic locking (`stateVersion`).
-  - Append-only move log in `game_moves`.
-  - Word Battle core game mechanics implementation.
+  - In-memory/database Game Registry mapping `gameId` to `GameDefinition` implementations. ✅ implemented
+  - Session creation endpoint (`POST /game-sessions`). ✅ implemented
+  - Session join endpoint (`POST /game-sessions/:publicId/join`). ✅ implemented
+  - Authoritative move pipeline (`POST /game-sessions/:publicId/moves`) validating turns, game state transitions, and optimistic locking (`stateVersion`). ✅ implemented
+  - Append-only move log in `game_moves`. ✅ implemented
+  - Word Battle core game mechanics implementation. ✅ implemented
+  - _Pending:_ Turn timeout watcher, notification delivery, real-time state push.
 - **Acceptance Criteria**:
-  1. Only server applies state transitions; client-submitted state is rejected.
-  2. Duplicate or out-of-turn moves return `NOT_YOUR_TURN` or `INVALID_MOVE`.
-  3. Mismatched `stateVersion` returns `STALE_GAME_STATE`.
-  4. Complete moves update session JSONB state and append to `game_moves`.
+  1. ✅ Only server applies state transitions; client-submitted state is rejected.
+  2. ✅ Duplicate or out-of-turn moves return `NOT_YOUR_TURN` or `INVALID_MOVE`.
+  3. ✅ Mismatched `stateVersion` returns `STALE_GAME_STATE`.
+  4. ✅ Complete moves update session JSONB state and append to `game_moves`.
 
 ### Phase 3 — Statistics, Streaks & Idempotent Result Engine
 

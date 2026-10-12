@@ -2,7 +2,7 @@
 
 Recess is a social multiplayer gaming platform built around how people already communicate. WhatsApp is intended as a **distribution and communication layer**; the Recess platform owns gaming identity, sessions, rules, matchmaking, chat, statistics, and communities.
 
-**Current status: Phase 0** — repository foundation only. No game mechanics, WhatsApp integration, matchmaking, or production UI yet.
+**Current status:** Foundation + Word Battle core mechanics + authoritative session pipeline. Real-time, matchmaking, WhatsApp transport, and statistics persistence are not yet implemented.
 
 ## Architecture
 
@@ -11,7 +11,7 @@ Modular **monolith** with **pluggable games**:
 - `apps/web` — Next.js client (no authoritative game rules)
 - `apps/api` — authoritative application layer
 - `packages/game-core` — deterministic, infrastructure-free game contracts
-- `games/*` — individual game modules (Word Battle boundary only)
+- `games/*` — individual game modules (Word Battle implemented)
 - `database` — PostgreSQL schema via Drizzle
 
 See [docs/architecture/README.md](./docs/architecture/README.md) and [AGENTS.md](./AGENTS.md).
@@ -56,7 +56,8 @@ API health: `GET http://localhost:4000/health` → `{ "status": "ok" }`
 
 ## Testing
 
-- **Unit:** game-core contract tests, shared types, API health
+- **Unit:** game-core contract tests, shared types, API health, Word Battle rules
+- **Integration:** PostgreSQL-backed identity and session tests
 - **E2E:** minimal home page smoke test (`apps/web`)
 
 ## Principles
@@ -64,12 +65,12 @@ API health: `GET http://localhost:4000/health` → `{ "status": "ok" }`
 - **Quiet platform. Loud game.**
 - **Server-authoritative** game state and moves
 - **Strict TypeScript**, clear module boundaries
-- No microservices, Kafka, or premature scale infrastructure in Phase 0
+- No microservices, Kafka, or premature scale infrastructure
 
 ## Current scope
 
-Foundation: workspaces, web/API shells, Drizzle schema skeleton, game definition contract, documentation, CI.
+Foundation (workspaces, CI), gaming identity & auth, authoritative session pipeline (create, join, submit move with `stateVersion` optimistic locking), Word Battle core rules + UI arena, asset library.
 
-## Future scope (not in Phase 0)
+## Future scope (not yet implemented)
 
-WhatsApp integration, matchmaking, chat, presence, statistics, Word Battle gameplay, tournaments, Game Houses, developer SDK, payments.
+WhatsApp integration, matchmaking, chat real-time delivery, presence, statistics persistence, Word Battle UX mechanics (lives, board constraints, scoring model), tournaments, Game Houses, developer SDK, payments.
