@@ -19,6 +19,12 @@ export interface GameSessionResponse<TState = unknown, TResult = unknown> {
   state: TState;
   stateVersion: number;
   currentPlayerId?: string | null;
+  /**
+   * Server-authoritative ISO-8601 deadline for the current turn (ADR-007), or null when the
+   * session has no pending deadline (waiting/completed games, or games without turn timeouts).
+   * Clients display this value; the server never trusts a client-supplied deadline.
+   */
+  turnDeadlineAt?: string | null;
   result?: TResult | null;
   players: GameSessionPlayer[];
   startedAt?: string | null;

@@ -5,19 +5,36 @@ Game specification for **Word Battle** — the first implemented title on Recess
 Implementation: [games/word-battle/src/word-battle.ts](../../games/word-battle/src/word-battle.ts)
 Types: [games/word-battle/src/types.ts](../../games/word-battle/src/types.ts)
 UI: [apps/web/app/games/word-battle/page.tsx](../../apps/web/app/games/word-battle/page.tsx)
+Dictionary: [apps/api/data/enable1.txt](../../apps/api/data/enable1.txt) (provenance: [apps/api/data/enable1-PROVENANCE.md](../../apps/api/data/enable1-PROVENANCE.md))
+
+---
+
+## Implementation status
+
+This document describes the **current** rules as implemented in the game core. Earlier
+versions of this file described a simpler prototype (no board, no lives, no penalties); that
+text was stale and has been removed. Status is labelled throughout:
+
+- **[Core]** — implemented and covered by deterministic unit tests in `word-battle.test.ts`.
+- **[API]** — implemented in the API layer (may still be incomplete; see *Stage 2 scope*).
+- **[Proposed]** — approved direction recorded in an ADR, **not yet implemented**.
+- **[Awaiting approval]** — a real divergence that needs a product decision.
 
 ---
 
 ## Overview
 
-Word Battle is a two-player, turn-based, score-accumulation word game. Players take turns submitting words. Each valid word scores points. After a fixed number of rounds, the player with the higher score wins; equal scores are a draw.
+Word Battle is a two-player, turn-based word duel on a shared **4×4 letter board**. Players
+alternate turns; each turn a player submits one word. Accepted words score points and consume
+their tiles, causing the board to cascade and refill. Rule violations cost a life. The match
+ends when a player is knocked out (0 lives) or the turn limit is reached.
 
 ---
 
 ## Players
 
-- **Exactly 2 players.** `minPlayers = 2`, `maxPlayers = 2`.
-- Seat order is determined by join order; the first joined player (creator) goes first.
+- **[Core]** Exactly 2 players. `minPlayers = 2`, `maxPlayers = 2`.
+- **[Core]** Seat order is join order; the creator (first join) takes the first turn.
 
 ---
 
@@ -25,162 +42,162 @@ Word Battle is a two-player, turn-based, score-accumulation word game. Players t
 
 ```typescript
 interface WordBattleState {
-  players: GamePlayer[];          // seat order
-  currentPlayerId: string;        // whose turn
-  scores: Record<string, number>; // userId → score
-  turnCount: number;              // turns completed
-  totalTurns: number;             // maxRounds * players.length
-  history: { playerId: string; word: string; score: number }[];
+  players: GamePlayer[];            // seat order (exactly 2)
+  currentPlayerId: string;          // whose turn it is
+  scores: Record<string, number>;   // userId → score
+  lives: Record<string, number>;    // userId → remaining lives (starts at 3)
+  turnCount: number;                // turns completed
+  totalTurns: number;               // maxRounds * players.length = 10
+  board: BoardTile[][];             // authoritative 4x4 grid [row][col]
+  boardVersion: number;             // increments on every cascade/refill
+  usedWords: string[];              // match-wide lowercase accepted words
+  history: WordBattleTurnHistory[]; // per-turn record incl. penalty reason
+  lastTransition?: BoardTransitionDelta; // last cascade delta for clients
+  rngSeed: number;                  // PRNG seed
+  rngStep: number;                  // PRNG step counter
 }
 ```
 
-- `totalTurns` defaults to `5 rounds × 2 players = 10 turns`.
-- The game ends when `turnCount >= totalTurns`.
+- **[Core]** Each player starts with **3 lives** and **0 score**.
+- **[Core]** `totalTurns` = 5 rounds × 2 players = **10 turns**.
+- **[Core]** Turn state (whose turn, counts) is part of state and persists via the session's
+  JSONB state column.
+
+---
+
+## Board and tile dynamics
+
+- **[Core]** The board is an authoritative **4×4 grid** of letter tiles (`BoardTile`:
+  `id`, `letter`, `row`, `col`). It is generated deterministically from `rngSeed`/`rngStep`
+  with vowel balancing (4–7 vowels per board).
+- **[Core]** When a word is accepted, its tiles are consumed; surviving tiles in each column
+  fall downward (column gravity); new tiles spawn at the top. This is captured in
+  `lastTransition` as a `BoardTransitionDelta` (`consumedTileIds`, `cascadedTiles`,
+  `spawnedTiles`) so clients can animate and reconcile.
+- **[Core]** Tile IDs are stable across cascades (`t_r{row}_c{col}_v{version}`) and
+  `boardVersion` increments on every refill.
 
 ---
 
 ## Moves
 
 ```typescript
-interface WordBattleMove {
-  word: string;
-}
+type WordBattleMove =
+  | { type?: 'word'; word: string; path?: BoardCoordinate[]; isDictionaryValid?: boolean }
+  | { type: 'timeout' };
 ```
 
-A move is a single word string.
+### Word moves
 
-### Move validation (game core)
+- **[Core]** `word` is required. It is trimmed and lowercased before evaluation.
+- **[Core]** `path` is **optional**. If provided, it must be a sequence of in-bounds,
+  pairwise-adjacent (horizontal, vertical, or diagonal), non-repeating coordinates whose tile
+  letters match the word exactly; otherwise the move is penalised with `ILLEGAL_PATH`.
+- **[Core]** If `path` is omitted (or empty), the core resolves it with a bounded,
+  deterministic depth-first search over the current board (`findPathOnBoard`). If the word
+  cannot be formed from the actual board, the move is penalised with `ILLEGAL_PATH`. A word
+  is never accepted unless it is demonstrably formable from the board.
 
-The game-core `validateMove` checks:
+### Timeout moves
 
-1. Game is not over.
-2. It is the submitting player's turn.
-3. The word is a non-empty string.
-4. The word contains only alphabetic characters (`a-z`, case-insensitive).
+- **[Core]** `{ type: 'timeout' }` represents an expired turn. It scores 0, costs 1 life,
+  leaves the board unchanged, and advances the turn. See *Turn deadlines* below for when this
+  move is applied.
 
-The game-core does **not** check dictionary validity — that is an API-layer concern (see below).
+---
 
-### Dictionary validation (API layer)
+## Dictionary validation
 
-Before reaching `validateMove`, the API (`session-service.ts`) calls `wordValidator.isValidWord(word)` for Word Battle. Words not recognized by the dictionary validator are rejected with `INVALID_MOVE`.
-
-This split keeps the game core free of I/O while still enforcing real-word rules.
+- **[API]** Dictionary membership is **not** checked by the game core (it performs no I/O).
+  The API validates words against a bundled offline list — **ENABLE1**, the Enhanced North
+  American Benchmark LExicon, which is public domain ([provenance](../../apps/api/data/enable1-PROVENANCE.md)).
+- **[API]** If the API confirms a word is **not** in the dictionary, it flags the move with
+  `isDictionaryValid: false`. The core then applies the `INVALID_DICTIONARY` penalty
+  (1 life, 0 points, turn passes). This keeps dictionary I/O out of the core while still
+  enforcing the real-word rule.
+- **[API]** A dictionary/infrastructure failure (e.g. the word list failed to load) must
+  surface as an error and **never** be treated as an invalid word — no life may be deducted
+  and the turn must not advance on infrastructure failure.
 
 ---
 
 ## Scoring
 
-### Authoritative scoring (game core)
+- **[Core]** Authoritative scoring is **`score = word.length`** — one point per character.
+- **[Awaiting approval]** The web UI currently renders a display-only Scrabble-style
+  per-letter table on tiles. It is **not** used for scoring and must stay display-only unless
+  a product decision changes the scoring rule. Do not introduce per-letter scoring in either
+  layer without approval.
 
-> **`score = word.length`** — one point per character.
+---
 
-The authoritative score is computed in `games/word-battle/src/word-battle.ts`:
+## Penalties
 
-```typescript
-const wordScore = normalized.length; // 1 point per character
-```
+Every rule violation costs **exactly 1 life**, scores **0 points**, and **passes the turn**
+(recorded in `history` with the penalty reason):
 
-### Scoring discrepancy — UNRESOLVED
-
-The web UI (`apps/web/app/games/word-battle/page.tsx`) defines a **per-letter Scrabble-style score table**:
-
-```typescript
-const LETTER_SCORES: Record<string, number> = {
-  A: 1, E: 1, I: 1, N: 1, O: 1, R: 1, S: 1, T: 1, U: 1,
-  D: 2, G: 2,
-  B: 3, C: 3, M: 3, P: 3,
-};
-```
-
-This table is **not** used by the game core. The UI currently displays per-letter scores on tiles and computes a display score from the word length, but the authoritative server-side score is always `word.length`.
-
-**This is an unresolved decision.** The two scoring systems produce different results for many words (e.g., "GAMES" = 5 pts by length, but 1+1+3+1+1 = 7 pts by the UI table). The UI must either:
-
-- (a) Adopt the game-core rule (1 pt per character) and remove the per-letter table, or
-- (b) Have the game core adopt a per-letter scoring system and the API pass letter scores through.
-
-**Neither option has been approved.** Do not change scoring in either layer without an explicit product decision.
+| Penalty reason | Trigger |
+|---|---|
+| `TOO_SHORT` | Word has fewer than 3 letters or non-alphabetic characters |
+| `DUPLICATE_WORD` | Word was already accepted earlier in the match (match-wide, case-insensitive) |
+| `ILLEGAL_PATH` | Path is invalid or the word cannot be formed from the current board |
+| `INVALID_DICTIONARY` | API confirmed the word is not in the dictionary |
+| `TIMEOUT` | The turn deadline expired |
 
 ---
 
 ## Turn progression
 
-- Turns alternate strictly between the two players.
-- `currentPlayerId` starts as the first player (creator).
-- After each valid move, `currentPlayerId` switches to the other player.
-- `turnCount` increments by 1 per move.
-- When `turnCount >= totalTurns`, the game is over and `getNextPlayer` returns `null`.
-
----
+- **[Core]** Turns alternate strictly; `turnCount` increments once per move (accepted or
+  penalised). After 10 turns the match ends.
 
 ## Completion and result
 
-```typescript
-interface WordBattleResult {
-  winnerId: string | null;
-  scores: Record<string, number>;
-  isDraw: boolean;
-}
-```
-
-- `isGameOver(state)` → `turnCount >= totalTurns`.
-- `getResult(state)`:
-  - Higher score wins.
-  - Equal scores → `isDraw = true`, `winnerId = null`.
-- The result is computed server-side and persisted to `game_sessions.result`.
+- **[Core]** A match ends immediately on **knockout** (any player reaches 0 lives) or when
+  `turnCount` reaches `totalTurns`.
+- **[Core]** `getResult` tie-break order on turn exhaustion: **remaining lives first**, then
+  **score**, then **draw**.
+- **[Core]** `WordBattleResult`: `{ winnerId, scores, lives, isDraw, isKnockout }`. Computed
+  server-side and persisted to `game_sessions.result`.
 
 ---
 
-## Legal actions per turn
+## Turn deadlines
 
-1. The current player taps tiles on the board to build a word (UI).
-2. The player submits the word.
-3. The server validates dictionary membership and game rules.
-4. On success, the score is added and the turn passes.
-5. On failure, the move is rejected with `INVALID_MOVE` and the turn does not pass.
-
-A player may not:
-- Submit a word out of turn (`NOT_YOUR_TURN`).
-- Submit after the game is over (`GAME_OVER` / `GAME_NOT_ACTIVE`).
-- Submit an empty or non-alphabetic word (`INVALID_MOVE`).
-
----
-
-## Board
-
-The UI renders a **4×4 grid of letter tiles** (`BOARD_LETTERS` in the page component). The game core does not enforce board layout, tile adjacency, or letter distribution — it accepts any alphabetic word. Board constraints (which letters are available, adjacency rules) are currently UI-only and not validated server-side.
-
-**Note:** This means the authoritative rules currently accept any valid dictionary word regardless of the displayed board. Whether board constraints should be enforced server-side is an **unresolved design decision**.
-
----
-
-## Lives / knockout UI
-
-The UI displays a lives/knockout HUD (3 lives per player) and a "Knockout Duel" round label. The game core has **no lives or knockout mechanic** — scoring is purely cumulative across rounds.
-
-The lives HUD is **presentational only** and does not affect game state. Whether lives/knockout should become an authoritative mechanic is an **unresolved design decision**.
-
----
-
-## Dictionary source
-
-The API uses `dictionaryApiValidator` (`apps/api/src/games/word-validator.ts`) to check word validity. The exact dictionary source and coverage are implementation details of that validator; the game core is agnostic.
+- **[API]** Each turn has a **15-second** deadline owned by the server, persisted as
+  `game_sessions.turn_deadline_at` (outside the pure core), enforced by a bounded background
+  sweeper plus lazy reconciliation on reads and move submissions, and applied atomically
+  through the existing optimistic-locking transaction. Deadline expiry deducts one life,
+  scores no points, leaves the board unchanged, and advances the turn. Full rationale and
+  implementation notes: [ADR-007](../decisions/ADR-007-turn-deadlines-and-timeout-processing.md).
+- **[API]** `expire-turn` is server-verified: it responds 409 `TURN_NOT_EXPIRED` until the
+  persisted deadline has actually elapsed per server time, so a client can request
+  reconciliation but cannot cause a premature timeout. The deadline is exposed via
+  `GameSessionResponse.turnDeadlineAt` and is never reset by reads, reconnects, retries, or
+  polling.
 
 ---
 
 ## Determinism
 
-- No randomness, no time, no I/O in the game core.
-- `createInitialState`, `validateMove`, `applyMove`, `isGameOver`, `getResult` are pure functions.
-- Same state + move always yields the same next state.
+- **[Core]** No randomness sources, wall-clock time, or I/O in the game core. All five
+  contract functions are pure; identical state + move always yields the identical next state.
+- **[Core]** Randomness is confined to the deterministic Mulberry32 PRNG, parameterised by
+  `rngSeed`/`rngStep` carried in state, so boards and spawns are replayable from persisted
+  state. `createInitialState` accepts an optional seed (used by tests); the API uses a
+  time-based seed at match start.
 
 ---
 
-## Unresolved decisions (summary)
+## Stage 2 scope
 
-1. **Scoring system:** word length (core) vs. per-letter Scrabble-style (UI table). Must be reconciled.
-2. **Board constraints:** Are moves constrained to the displayed 4×4 board (tile availability, adjacency)? Currently not enforced server-side.
-3. **Lives / knockout mechanic:** UI shows lives but core does not implement them. Is this a future mechanic or should the UI be simplified?
-4. **Dictionary source and coverage:** What dictionary is authoritative? What happens for words not in the dictionary?
+Planned, approved-direction work (not all implemented yet):
 
-These decisions require product approval. Do not implement either side without explicit authorization.
+- Turn-deadline persistence and server-authoritative timeout processing (ADR-007) —
+  **implemented 2026-10-13**, verified against PostgreSQL.
+- Server-verified `expire-turn` and `turnDeadlineAt` in `GameSessionResponse` —
+  **implemented 2026-10-13**.
+- Bounded, deterministic dead-board recovery (reshuffle) — type field `reshuffled` exists;
+  no behaviour yet.
+- Dictionary load-in-`buildApp` hardening; additional PostgreSQL integration/concurrency
+  coverage.

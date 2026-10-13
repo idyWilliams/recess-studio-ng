@@ -17,13 +17,29 @@ import {
 import { AppError } from '../errors/app-error.js';
 import { GameRegistry } from '../games/game-registry.js';
 import { dictionaryApiValidator, type WordValidator } from '../games/word-validator.js';
-import type { SessionRepository, SessionWithPlayers } from './session-repository.js';
+import type {
+  SessionRecord,
+  SessionRepository,
+  SessionWithPlayers,
+} from './session-repository.js';
+
+/**
+ * Fixed server-authoritative turn duration (ADR-007). A deadline is established when a turn
+ * becomes active and is never extended: reads, reconnects, retries, and polling have no
+ * influence on it.
+ */
+export const TURN_DURATION_MS = 15_000;
+
+/** A game definition as resolved from the registry (validated at each call site). */
+type RegisteredGame = NonNullable<ReturnType<GameRegistry['get']>>;
 
 export class SessionService {
   constructor(
     private repo: SessionRepository,
     private gameRegistry: GameRegistry = new GameRegistry(),
     private wordValidator: WordValidator = dictionaryApiValidator,
+    /** Injected clock — tests drive it deterministically; production uses the wall clock. */
+    private now: () => Date = () => new Date(),
   ) {}
 
   private mapResponse(session: SessionWithPlayers): GameSessionResponse {
@@ -45,6 +61,7 @@ export class SessionService {
       stateVersion: session.stateVersion,
       currentPlayerId: session.currentPlayerId,
       result: session.result,
+      turnDeadlineAt: session.turnDeadlineAt,
       players,
       startedAt: session.startedAt,
       completedAt: session.completedAt,
@@ -92,7 +109,12 @@ export class SessionService {
     if (!session) {
       throw new AppError('GAME_NOT_FOUND', 'Game session not found', 404);
     }
-    return this.mapResponse(session);
+    // Lazy timeout reconciliation (ADR-007): an already-expired deadline is applied on read
+    // so clients observe the authoritative consequence immediately, without waiting for the
+    // background sweeper. Repeated reads after expiry are no-ops (the deadline is consumed).
+    const now = this.now();
+    const { session: reconciled } = await this.reconcileSessionIfExpired(session, now);
+    return this.mapResponse(reconciled);
   }
 
   async joinSession(
@@ -156,8 +178,19 @@ export class SessionService {
 
       const initialState = game.createInitialState(gamePlayers);
       const currentPlayerId = game.getNextPlayer(initialState);
+      const turnDeadlineAt = this.computeTurnDeadline(
+        game,
+        initialState,
+        currentPlayerId,
+        this.now(),
+      );
 
-      await this.repo.startSession(updated.id, initialState, currentPlayerId);
+      await this.repo.startSession(
+        updated.id,
+        initialState,
+        currentPlayerId,
+        turnDeadlineAt,
+      );
 
       const activeSession = await this.repo.findSessionById(session.id);
       if (!activeSession) {
@@ -172,9 +205,9 @@ export class SessionService {
   async submitMove(
     userId: string,
     publicId: string,
-    input: SubmitMoveInput,
+    rawInput: SubmitMoveInput,
   ): Promise<GameSessionResponse> {
-    const parsed = submitMoveSchema.safeParse(input);
+    const parsed = submitMoveSchema.safeParse(rawInput);
     if (!parsed.success) {
       throw new AppError(
         'INVALID_INPUT',
@@ -182,8 +215,26 @@ export class SessionService {
         400,
       );
     }
+    let input: SubmitMoveInput = rawInput;
 
-    const session = await this.repo.findSessionByPublicId(publicId);
+    // Client-submitted timeout moves are rejected outright (ADR-007): a timeout penalty is
+    // applied ONLY by the server-authoritative transition (expire-turn reconciliation, lazy
+    // read reconciliation, or the sweeper), and only after the persisted deadline has
+    // actually expired per server time. Clients can never author a timeout.
+    const submittedMove = input.move as Record<string, unknown> | null | undefined;
+    if (
+      submittedMove !== null &&
+      typeof submittedMove === 'object' &&
+      submittedMove.type === 'timeout'
+    ) {
+      throw new AppError(
+        'INVALID_MOVE',
+        'Timeout moves cannot be submitted directly; request reconciliation via the expire-turn endpoint',
+        400,
+      );
+    }
+
+    let session = await this.repo.findSessionByPublicId(publicId);
     if (!session) {
       throw new AppError('GAME_NOT_FOUND', 'Game session not found', 404);
     }
@@ -203,6 +254,18 @@ export class SessionService {
       throw new AppError('GAME_NOT_ACTIVE', 'Game has not started yet', 400);
     }
     if (session.status === 'completed' || session.status === 'abandoned') {
+      throw new AppError('GAME_NOT_ACTIVE', 'Game session is already finished', 400);
+    }
+
+    const now = this.now();
+
+    // Lazy timeout reconciliation (ADR-007): if the persisted deadline has already passed,
+    // apply the authoritative timeout transition BEFORE evaluating this move, so a late move
+    // can never steal a turn the deadline has already consumed.
+    session = (await this.reconcileSessionIfExpired(session, now)).session;
+
+    // The timeout may have ended the match (e.g. knockout); re-check before continuing.
+    if (session.status !== 'active') {
       throw new AppError('GAME_NOT_ACTIVE', 'Game session is already finished', 400);
     }
 
@@ -230,16 +293,25 @@ export class SessionService {
       );
     }
 
-    // 5.1 Game-specific API boundary validations (e.g. dictionary lookups)
+    // 5.1 Game-specific API boundary validations (dictionary lookup)
+    //
+    // For word-battle, validate the submitted word against the local dictionary.
+    // Instead of rejecting at the HTTP layer (which would prevent the game core
+    // from recording the penalty), we set isDictionaryValid: false on the move.
+    // The game core then applies the life penalty and records history correctly.
     if (session.gameId === 'word-battle') {
-      const word = (input.move as { word?: unknown })?.word;
+      const movePayload = input.move as Record<string, unknown>;
+      const word = movePayload?.word;
       if (typeof word !== 'string' || word.trim().length === 0) {
         throw new AppError('INVALID_MOVE', 'Word must be a non-empty string', 400);
       }
-      const isValid = await this.wordValidator.isValidWord(word);
-      if (!isValid) {
-        throw new AppError('INVALID_MOVE', `"${word}" is not a recognized word`, 400);
-      }
+      const isDictionaryValid = await this.wordValidator.isValidWord(word);
+      // Flag the move with dictionary validity so the game core can apply
+      // the appropriate penalty if the word is not in the dictionary.
+      input = {
+        ...input,
+        move: { ...movePayload, isDictionaryValid },
+      };
     }
 
     // 6. Server-authoritative move validation
@@ -259,6 +331,11 @@ export class SessionService {
     const isGameOver = game.isGameOver(nextState);
     const nextPlayerId = game.getNextPlayer(nextState);
     const result = isGameOver ? game.getResult(nextState) : null;
+    // The new turn's deadline is established server-side from the same clock reading;
+    // terminated games carry no deadline.
+    const nextTurnDeadlineAt = isGameOver
+      ? null
+      : this.computeTurnDeadline(game, nextState, nextPlayerId, now);
 
     // 8. Atomic optimistic commit & move audit persistence
     const updated = await this.repo.applyMove({
@@ -270,8 +347,226 @@ export class SessionService {
       nextPlayerId,
       isGameOver,
       result,
+      nextTurnDeadlineAt,
     });
 
     return this.mapResponse(updated);
+  }
+
+  /**
+   * Server-verified turn-expiry request (ADR-007). A client may ask the server to reconcile
+   * the current turn, but the request itself carries no authority: the timeout is applied
+   * only when the persisted deadline has actually expired per server time. The response is
+   * the post-transition session; a request referencing an already-advanced state is rejected
+   * with 409 STALE_GAME_STATE so clients can safely discard it.
+   */
+  async expireTurn(
+    userId: string,
+    publicId: string,
+    expectedStateVersion: number,
+  ): Promise<GameSessionResponse> {
+    const session = await this.repo.findSessionByPublicId(publicId);
+    if (!session) {
+      throw new AppError('GAME_NOT_FOUND', 'Game session not found', 404);
+    }
+
+    const isParticipant = session.players.some((p) => p.userId === userId);
+    if (!isParticipant) {
+      throw new AppError(
+        'PLAYER_NOT_IN_GAME',
+        'You are not a player in this game session',
+        403,
+      );
+    }
+
+    if (session.status !== 'active') {
+      throw new AppError('GAME_NOT_ACTIVE', 'Game session is not active', 400);
+    }
+
+    if (expectedStateVersion !== session.stateVersion) {
+      throw new AppError(
+        'STALE_GAME_STATE',
+        `State version mismatch. Current version is ${session.stateVersion}, expected ${expectedStateVersion}`,
+        409,
+      );
+    }
+
+    const updated = await this.applyTurnTimeout(session, this.now());
+    return this.mapResponse(updated);
+  }
+
+  /**
+   * Bounded sweep step (ADR-007): reconciles up to `limit` active sessions whose persisted
+   * deadline has passed, oldest deadline first. Safe to run from multiple processes and to
+   * re-run at any time — every transition reuses the same optimistic-locking commit as a
+   * regular move, so a given turn can be timed out at most once. Per-session failures never
+   * abort the batch; unexpected ones are reported via `onError`.
+   */
+  async reconcileExpiredTurns(
+    limit: number,
+    onError?: (error: unknown, context: { sessionId: string }) => void,
+  ): Promise<{ scanned: number; reconciled: number }> {
+    const now = this.now();
+    const ids = await this.repo.findExpiredActiveSessions(now, limit);
+    let reconciled = 0;
+
+    for (const sessionId of ids) {
+      try {
+        const session = await this.repo.findSessionById(sessionId);
+        if (!session) continue;
+        const { transitioned } = await this.reconcileSessionIfExpired(session, now);
+        if (transitioned) {
+          reconciled += 1;
+        }
+      } catch (err) {
+        onError?.(err, { sessionId });
+      }
+    }
+
+    return { scanned: ids.length, reconciled };
+  }
+
+  /**
+   * Detects whether a game definition supports timeout moves without mutating anything
+   * (capability probe). Games whose `validateMove` rejects `{ type: 'timeout' }` — e.g. the
+   * take-turn demo — simply never receive a turn deadline.
+   */
+  private gameSupportsTurnTimeouts(
+    game: RegisteredGame,
+    state: unknown,
+    playerId: string,
+  ): boolean {
+    try {
+      return game.validateMove(state, { type: 'timeout' }, playerId).ok;
+    } catch {
+      // A definition that throws on probe input does not support timeouts.
+      return false;
+    }
+  }
+
+  /** Deadline for a newly active turn, or null when the game does not support timeouts. */
+  private computeTurnDeadline(
+    game: RegisteredGame,
+    state: unknown,
+    currentPlayerId: string | null,
+    now: Date,
+  ): Date | null {
+    if (
+      !currentPlayerId ||
+      !this.gameSupportsTurnTimeouts(game, state, currentPlayerId)
+    ) {
+      return null;
+    }
+    return new Date(now.getTime() + TURN_DURATION_MS);
+  }
+
+  /**
+   * Applies the authoritative timeout transition if — and only if — the persisted deadline
+   * has already elapsed. Returns the session unchanged otherwise. Races with concurrent
+   * actors (a move, another instance's sweep, a parallel reconciliation) are resolved by
+   * re-reading the fresh record instead of surfacing a conflict on read paths.
+   */
+  private async reconcileSessionIfExpired(
+    session: SessionWithPlayers,
+    now: Date,
+  ): Promise<{ session: SessionWithPlayers; transitioned: boolean }> {
+    if (session.status !== 'active' || session.turnDeadlineAt === null) {
+      return { session, transitioned: false };
+    }
+    if (now.getTime() < Date.parse(session.turnDeadlineAt)) {
+      return { session, transitioned: false };
+    }
+
+    try {
+      const updated = await this.applyTurnTimeout(session, now);
+      return { session: updated, transitioned: true };
+    } catch (err) {
+      if (
+        err instanceof AppError &&
+        (err.code === 'STALE_GAME_STATE' || err.code === 'GAME_NOT_ACTIVE')
+      ) {
+        const fresh = await this.repo.findSessionById(session.id);
+        return { session: fresh ?? session, transitioned: false };
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * The single authoritative timeout transition (ADR-007). It re-verifies eligibility against
+   * persisted data before touching anything: the session must be active, a deadline must be
+   * stored (games without timeout support never have one), and the deadline must have actually
+   * expired per server time. The penalty itself is computed by the pure game core via a
+   * `{ type: 'timeout' }` move and committed through the same optimistic-locking CAS and
+   * `game_moves` unique index as a regular move, so concurrent callers can never apply the
+   * timeout twice, and the timed-out player is recorded as the move's author for audit.
+   */
+  private async applyTurnTimeout(
+    session: SessionRecord,
+    now: Date,
+  ): Promise<SessionWithPlayers> {
+    if (session.status !== 'active') {
+      throw new AppError('GAME_NOT_ACTIVE', 'Game session is not active', 400);
+    }
+    if (!session.turnDeadlineAt) {
+      throw new AppError(
+        'TURN_NOT_EXPIRED',
+        'This game session has no stored turn deadline to enforce',
+        409,
+      );
+    }
+    if (now.getTime() < Date.parse(session.turnDeadlineAt)) {
+      throw new AppError(
+        'TURN_NOT_EXPIRED',
+        'The turn deadline has not expired yet',
+        409,
+      );
+    }
+
+    const playerId = session.currentPlayerId;
+    if (!playerId) {
+      throw new AppError('GAME_NOT_ACTIVE', 'Game session has no active player', 400);
+    }
+
+    const game = this.gameRegistry.get(session.gameId);
+    if (!game) {
+      throw new AppError(
+        'GAME_NOT_FOUND',
+        'Game definition not found in registry',
+        500,
+      );
+    }
+
+    // Capability + turn guard: if the game does not accept timeout moves, NOTHING is
+    // applied — no life is deducted, no points change, the turn does not advance.
+    const timeoutMove = { type: 'timeout' };
+    const validation = game.validateMove(session.state, timeoutMove, playerId);
+    if (!validation.ok) {
+      throw new AppError(
+        'INVALID_MOVE',
+        `Timeout is not applicable to this game session: ${validation.message}`,
+        409,
+      );
+    }
+
+    const nextState = game.applyMove(session.state, timeoutMove, playerId);
+    const isGameOver = game.isGameOver(nextState);
+    const nextPlayerId = game.getNextPlayer(nextState);
+    const result = isGameOver ? game.getResult(nextState) : null;
+    const nextTurnDeadlineAt = isGameOver
+      ? null
+      : this.computeTurnDeadline(game, nextState, nextPlayerId, now);
+
+    return this.repo.applyMove({
+      sessionId: session.id,
+      userId: playerId,
+      move: timeoutMove,
+      expectedVersion: session.stateVersion,
+      nextState,
+      nextPlayerId,
+      isGameOver,
+      result,
+      nextTurnDeadlineAt,
+    });
   }
 }

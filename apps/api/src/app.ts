@@ -18,6 +18,7 @@ import {
   PostgresSessionRepository,
 } from './sessions/session-repository.js';
 import { SessionService } from './sessions/session-service.js';
+import { TurnTimeoutSweeper } from './sessions/turn-timeout-sweeper.js';
 
 export function buildApp(
   env: Env,
@@ -56,6 +57,24 @@ export function buildApp(
   void app.register(registerHealthRoutes);
   registerIdentityRoutes(app, resolvedIdentity);
   registerSessionRoutes(app, resolvedSession, resolvedIdentity);
+
+  // Background turn-timeout sweeper (ADR-007). Disabled under NODE_ENV=test so unit and
+  // integration tests never depend on wall-clock timers — tests drive the same
+  // reconciliation path deterministically via SessionService. Started on onReady and
+  // stopped on onClose so `app.close()` cleanly drains an in-flight sweep.
+  if (env.NODE_ENV !== 'test') {
+    const sweeper = new TurnTimeoutSweeper(resolvedSession, {
+      intervalMs: env.TURN_SWEEP_INTERVAL_MS,
+      batchSize: env.TURN_SWEEP_BATCH_SIZE,
+      logger: app.log,
+    });
+    app.addHook('onReady', () => {
+      sweeper.start();
+    });
+    app.addHook('onClose', async () => {
+      await sweeper.stop();
+    });
+  }
 
   return app;
 }

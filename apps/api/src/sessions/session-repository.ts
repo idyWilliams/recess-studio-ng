@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, lte } from 'drizzle-orm';
 
 import {
   gameMoves,
@@ -19,6 +19,8 @@ export interface SessionRecord {
   stateVersion: number;
   currentPlayerId: string | null;
   result: unknown | null;
+  /** ISO-8601 server-authoritative deadline for the current turn, or null (ADR-007). */
+  turnDeadlineAt: string | null;
   startedAt: string | null;
   completedAt: string | null;
   createdAt: string;
@@ -58,6 +60,7 @@ export interface SessionRepository {
     sessionId: string,
     state: unknown,
     currentPlayerId: string | null,
+    turnDeadlineAt: Date | null,
   ): Promise<void>;
   applyMove(data: {
     sessionId: string;
@@ -68,13 +71,41 @@ export interface SessionRepository {
     nextPlayerId: string | null;
     isGameOver: boolean;
     result: unknown | null;
+    /** Deadline for the turn created by this move; ignored (cleared) when the game ended. */
+    nextTurnDeadlineAt: Date | null;
   }): Promise<SessionWithPlayers>;
+
+  /**
+   * Ids of active sessions whose persisted turn deadline is at or before `now`, oldest
+   * deadline first. Used by the bounded timeout sweeper (ADR-007). Sessions without a
+   * deadline (null) are never returned.
+   */
+  findExpiredActiveSessions(now: Date, limit: number): Promise<string[]>;
 }
 
 type DbOrTx = Database | Parameters<Parameters<Database['transaction']>[0]>[0];
 
 export class PostgresSessionRepository implements SessionRepository {
   constructor(private db: Database) {}
+
+  /** Maps a `game_sessions` row to the repository record shape (ISO timestamps). */
+  private toSessionRecord(row: typeof gameSessions.$inferSelect): SessionRecord {
+    return {
+      id: row.id,
+      publicId: row.publicId,
+      gameId: row.gameId,
+      status: row.status,
+      state: row.state,
+      stateVersion: row.stateVersion,
+      currentPlayerId: row.currentPlayerId,
+      result: row.result,
+      turnDeadlineAt: row.turnDeadlineAt?.toISOString() ?? null,
+      startedAt: row.startedAt?.toISOString() ?? null,
+      completedAt: row.completedAt?.toISOString() ?? null,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
 
   private async getPlayersForSession(
     sessionId: string,
@@ -92,7 +123,13 @@ export class PostgresSessionRepository implements SessionRepository {
       })
       .from(gamePlayers)
       .innerJoin(gamingProfiles, eq(gamePlayers.userId, gamingProfiles.userId))
-      .where(eq(gamePlayers.sessionId, sessionId));
+      .where(eq(gamePlayers.sessionId, sessionId))
+      // Seat order (creator first) is game-semantic: games derive the starting
+      // player from the first entry of the player list. Without an explicit
+      // ORDER BY, PostgreSQL may return rows in any order, making the opening
+      // player — and with it the authoritative turn owner and turn deadline —
+      // nondeterministic. joinedAt/id keep the order total even for equal seats.
+      .orderBy(asc(gamePlayers.seat), asc(gamePlayers.joinedAt), asc(gamePlayers.id));
 
     return rows.map((r) => ({
       id: r.id,
@@ -140,21 +177,7 @@ export class PostgresSessionRepository implements SessionRepository {
 
       const players = await this.getPlayersForSession(insertedSession.id, tx);
 
-      return {
-        id: insertedSession.id,
-        publicId: insertedSession.publicId,
-        gameId: insertedSession.gameId,
-        status: insertedSession.status,
-        state: insertedSession.state,
-        stateVersion: insertedSession.stateVersion,
-        currentPlayerId: insertedSession.currentPlayerId,
-        result: insertedSession.result,
-        startedAt: insertedSession.startedAt?.toISOString() ?? null,
-        completedAt: insertedSession.completedAt?.toISOString() ?? null,
-        createdAt: insertedSession.createdAt.toISOString(),
-        updatedAt: insertedSession.updatedAt.toISOString(),
-        players,
-      };
+      return { ...this.toSessionRecord(insertedSession), players };
     });
   }
 
@@ -169,21 +192,7 @@ export class PostgresSessionRepository implements SessionRepository {
 
     const players = await this.getPlayersForSession(session.id);
 
-    return {
-      id: session.id,
-      publicId: session.publicId,
-      gameId: session.gameId,
-      status: session.status,
-      state: session.state,
-      stateVersion: session.stateVersion,
-      currentPlayerId: session.currentPlayerId,
-      result: session.result,
-      startedAt: session.startedAt?.toISOString() ?? null,
-      completedAt: session.completedAt?.toISOString() ?? null,
-      createdAt: session.createdAt.toISOString(),
-      updatedAt: session.updatedAt.toISOString(),
-      players,
-    };
+    return { ...this.toSessionRecord(session), players };
   }
 
   async findSessionById(id: string): Promise<SessionWithPlayers | null> {
@@ -197,21 +206,7 @@ export class PostgresSessionRepository implements SessionRepository {
 
     const players = await this.getPlayersForSession(session.id);
 
-    return {
-      id: session.id,
-      publicId: session.publicId,
-      gameId: session.gameId,
-      status: session.status,
-      state: session.state,
-      stateVersion: session.stateVersion,
-      currentPlayerId: session.currentPlayerId,
-      result: session.result,
-      startedAt: session.startedAt?.toISOString() ?? null,
-      completedAt: session.completedAt?.toISOString() ?? null,
-      createdAt: session.createdAt.toISOString(),
-      updatedAt: session.updatedAt.toISOString(),
-      players,
-    };
+    return { ...this.toSessionRecord(session), players };
   }
 
   async addPlayer(
@@ -269,6 +264,7 @@ export class PostgresSessionRepository implements SessionRepository {
     sessionId: string,
     state: unknown,
     currentPlayerId: string | null,
+    turnDeadlineAt: Date | null,
   ): Promise<void> {
     await this.db
       .update(gameSessions)
@@ -276,6 +272,7 @@ export class PostgresSessionRepository implements SessionRepository {
         status: 'active',
         state: state as Record<string, unknown>,
         currentPlayerId,
+        turnDeadlineAt,
         startedAt: new Date(),
         updatedAt: new Date(),
       })
@@ -291,6 +288,7 @@ export class PostgresSessionRepository implements SessionRepository {
     nextPlayerId: string | null;
     isGameOver: boolean;
     result: unknown | null;
+    nextTurnDeadlineAt: Date | null;
   }): Promise<SessionWithPlayers> {
     const newVersion = data.expectedVersion + 1;
     const now = new Date();
@@ -304,6 +302,8 @@ export class PostgresSessionRepository implements SessionRepository {
           currentPlayerId: data.nextPlayerId,
           status: data.isGameOver ? 'completed' : 'active',
           result: data.result as Record<string, unknown> | null,
+          // Completed sessions must never carry a live deadline.
+          turnDeadlineAt: data.isGameOver ? null : data.nextTurnDeadlineAt,
           completedAt: data.isGameOver ? now : null,
           updatedAt: now,
         })
@@ -337,22 +337,25 @@ export class PostgresSessionRepository implements SessionRepository {
 
       const players = await this.getPlayersForSession(data.sessionId, tx);
 
-      return {
-        id: updated.id,
-        publicId: updated.publicId,
-        gameId: updated.gameId,
-        status: updated.status,
-        state: updated.state,
-        stateVersion: updated.stateVersion,
-        currentPlayerId: updated.currentPlayerId,
-        result: updated.result,
-        startedAt: updated.startedAt?.toISOString() ?? null,
-        completedAt: updated.completedAt?.toISOString() ?? null,
-        createdAt: updated.createdAt.toISOString(),
-        updatedAt: updated.updatedAt.toISOString(),
-        players,
-      };
+      return { ...this.toSessionRecord(updated), players };
     });
+  }
+
+  async findExpiredActiveSessions(now: Date, limit: number): Promise<string[]> {
+    const rows = await this.db
+      .select({ id: gameSessions.id })
+      .from(gameSessions)
+      .where(
+        and(
+          eq(gameSessions.status, 'active'),
+          isNotNull(gameSessions.turnDeadlineAt),
+          lte(gameSessions.turnDeadlineAt, now),
+        ),
+      )
+      .orderBy(asc(gameSessions.turnDeadlineAt))
+      .limit(limit);
+
+    return rows.map((row) => row.id);
   }
 }
 
@@ -386,6 +389,7 @@ export class InMemorySessionRepository implements SessionRepository {
       stateVersion: data.stateVersion,
       currentPlayerId: data.currentPlayerId,
       result: null,
+      turnDeadlineAt: null,
       startedAt: null,
       completedAt: null,
       createdAt: now,
@@ -453,6 +457,7 @@ export class InMemorySessionRepository implements SessionRepository {
     sessionId: string,
     state: unknown,
     currentPlayerId: string | null,
+    turnDeadlineAt: Date | null,
   ): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('Session not found');
@@ -460,6 +465,7 @@ export class InMemorySessionRepository implements SessionRepository {
     session.status = 'active';
     session.state = state;
     session.currentPlayerId = currentPlayerId;
+    session.turnDeadlineAt = turnDeadlineAt?.toISOString() ?? null;
     session.startedAt = new Date().toISOString();
     session.updatedAt = new Date().toISOString();
   }
@@ -473,6 +479,7 @@ export class InMemorySessionRepository implements SessionRepository {
     nextPlayerId: string | null;
     isGameOver: boolean;
     result: unknown | null;
+    nextTurnDeadlineAt: Date | null;
   }): Promise<SessionWithPlayers> {
     const session = this.sessions.get(data.sessionId);
     if (!session) throw new Error('Session not found');
@@ -491,10 +498,25 @@ export class InMemorySessionRepository implements SessionRepository {
     session.currentPlayerId = data.nextPlayerId;
     session.status = data.isGameOver ? 'completed' : 'active';
     session.result = data.result;
+    session.turnDeadlineAt = data.isGameOver
+      ? null
+      : (data.nextTurnDeadlineAt?.toISOString() ?? null);
     session.completedAt = data.isGameOver ? now : null;
     session.updatedAt = now;
 
     const players = this.players.get(data.sessionId) ?? [];
     return { ...session, players };
+  }
+
+  async findExpiredActiveSessions(now: Date, limit: number): Promise<string[]> {
+    const nowMs = now.getTime();
+    const expired = [...this.sessions.values()].filter(
+      (s): s is SessionRecord & { turnDeadlineAt: string } =>
+        s.status === 'active' &&
+        s.turnDeadlineAt !== null &&
+        Date.parse(s.turnDeadlineAt) <= nowMs,
+    );
+    expired.sort((a, b) => Date.parse(a.turnDeadlineAt) - Date.parse(b.turnDeadlineAt));
+    return expired.slice(0, limit).map((s) => s.id);
   }
 }

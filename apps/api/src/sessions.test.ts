@@ -1,20 +1,96 @@
 import { describe, expect, it } from 'vitest';
 
+import type { FastifyInstance } from 'fastify';
+
+import type { BoardCoordinate, BoardTile } from '@recess/game-word-battle';
+
 import { buildApp } from './app.js';
 import { GameRegistry } from './games/game-registry.js';
 import type { WordValidator } from './games/word-validator.js';
 import { IdentityService } from './identity/identity-service.js';
 import { InMemorySessionRepository } from './sessions/session-repository.js';
-import { SessionService } from './sessions/session-service.js';
+import { SessionService, TURN_DURATION_MS } from './sessions/session-service.js';
+
+/** Controllable clock for deterministic turn-deadline tests (no wall-clock dependence). */
+function createTestClock(start: Date) {
+  let current = new Date(start.getTime());
+  return {
+    now: () => new Date(current.getTime()),
+    advance: (ms: number) => {
+      current = new Date(current.getTime() + ms);
+    },
+  };
+}
+
+/**
+ * Walks an authoritative board to find any adjacent, non-repeating tile path of at
+ * least 3 tiles, returning the word those tiles spell along with the path. Used to
+ * derive a genuinely formable word for API-level move tests (the API generates its
+ * own board from a time-based seed, so tests cannot hardcode a word).
+ */
+function findFormableWordOnBoard(board: BoardTile[][]): {
+  word: string;
+  path: BoardCoordinate[];
+} {
+  const size = board.length;
+  const directions = [-1, 0, 1];
+
+  function dfs(
+    row: number,
+    col: number,
+    visited: Set<string>,
+    path: BoardCoordinate[],
+  ): BoardCoordinate[] | null {
+    if (path.length >= 3) return path;
+    for (const dr of directions) {
+      for (const dc of directions) {
+        if (dr === 0 && dc === 0) continue;
+        const nr = row + dr;
+        const nc = col + dc;
+        if (nr < 0 || nr >= size || nc < 0 || nc >= size) continue;
+        const key = `${nr},${nc}`;
+        if (visited.has(key)) continue;
+        visited.add(key);
+        path.push({ row: nr, col: nc });
+        const result = dfs(nr, nc, visited, path);
+        if (result) return result;
+        path.pop();
+        visited.delete(key);
+      }
+    }
+    return null;
+  }
+
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      const visited = new Set<string>([`${r},${c}`]);
+      const path: BoardCoordinate[] = [{ row: r, col: c }];
+      const found = dfs(r, c, visited, path);
+      if (found) {
+        return {
+          word: found.map((p) => board[p.row]![p.col]!.letter.toLowerCase()).join(''),
+          path: found,
+        };
+      }
+    }
+  }
+
+  throw new Error('Expected a 4x4 board to contain a formable word path');
+}
 
 describe('Game Sessions & Turn Engine (Unit)', () => {
   const env = { PORT: 3000, NODE_ENV: 'test' as const };
 
-  async function setupTestApp(wordValidator?: WordValidator) {
+  async function setupTestApp(wordValidator?: WordValidator, now?: () => Date) {
     const identityService = new IdentityService();
     const sessionRepo = new InMemorySessionRepository();
     const gameRegistry = new GameRegistry();
-    const sessionService = new SessionService(sessionRepo, gameRegistry, wordValidator);
+    const sessionService = new SessionService(
+      sessionRepo,
+      gameRegistry,
+      wordValidator,
+      now,
+    );
     const app = buildApp(env, identityService, sessionService, gameRegistry);
 
     // Register Player 1
@@ -45,7 +121,7 @@ describe('Game Sessions & Turn Engine (Unit)', () => {
     sessionRepo.setUsername(p2.user.id, 'PlayerTwo');
     sessionRepo.setUsername(p3.user.id, 'PlayerThree');
 
-    return { app, p1, p2, p3 };
+    return { app, p1, p2, p3, sessionService, sessionRepo };
   }
 
   it('requires authentication to create a session', async () => {
@@ -342,7 +418,9 @@ describe('Game Sessions & Turn Engine (Unit)', () => {
 
     it('validates moves through dictionary validator and updates game state', async () => {
       const mockValidator: WordValidator = {
-        isValidWord: async (word: string) => ['apple', 'banana'].includes(word),
+        // Accept any word as dictionary-valid; this test exercises the move pipeline,
+        // not the dictionary itself.
+        isValidWord: async () => true,
       };
       const { app, p1, p2 } = await setupTestApp(mockValidator);
 
@@ -360,25 +438,80 @@ describe('Game Sessions & Turn Engine (Unit)', () => {
         headers: { authorization: `Bearer ${p2.sessionToken}` },
       });
 
-      // Submit valid word 'apple' (5 letters -> 5 points)
+      // Read the authoritative board and derive a word that IS formable on it.
+      const getRes = await app.inject({
+        method: 'GET',
+        url: `/game-sessions/${publicId}`,
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+      });
+      const { word, path } = findFormableWordOnBoard(getRes.json().state.board);
+
       const moveRes = await app.inject({
         method: 'POST',
         url: `/game-sessions/${publicId}/moves`,
         headers: { authorization: `Bearer ${p1.sessionToken}` },
-        payload: { move: { word: 'apple' }, expectedStateVersion: 0 },
+        payload: { move: { word, path }, expectedStateVersion: 0 },
       });
 
       expect(moveRes.statusCode).toBe(200);
       const updated = moveRes.json();
       expect(updated.stateVersion).toBe(1);
       expect(updated.currentPlayerId).toBe(p2.user.id);
-      expect(updated.state.scores[p1.user.id]).toBe(5);
-      expect(updated.state.history).toEqual([
-        { playerId: p1.user.id, word: 'apple', score: 5 },
-      ]);
+      expect(updated.state.scores[p1.user.id]).toBe(word.length);
+      expect(updated.state.history[0]).toMatchObject({
+        playerId: p1.user.id,
+        word,
+        score: word.length,
+      });
     });
 
-    it('rejects unrecognized word with INVALID_MOVE without advancing turn', async () => {
+    it('penalises with ILLEGAL_PATH when a dictionary-valid word cannot be formed on the board', async () => {
+      const mockValidator: WordValidator = {
+        // Even a dictionary-valid word must be rejected if it is not formable on the board.
+        isValidWord: async () => true,
+      };
+      const { app, p1, p2 } = await setupTestApp(mockValidator);
+
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/game-sessions',
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { gameId: 'word-battle' },
+      });
+      const { publicId } = createRes.json();
+
+      await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/join`,
+        headers: { authorization: `Bearer ${p2.sessionToken}` },
+      });
+
+      // Ten Z's can never be formed on a board that is vowel-balanced (4-7 vowels).
+      const moveRes = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/moves`,
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { move: { word: 'zzzzzzzzzz' }, expectedStateVersion: 0 },
+      });
+
+      expect(moveRes.statusCode).toBe(200);
+      const updated = moveRes.json();
+
+      // Penalised, not scored: life lost, no points, board unchanged, turn passes.
+      expect(updated.stateVersion).toBe(1);
+      expect(updated.currentPlayerId).toBe(p2.user.id);
+      expect(updated.state.scores[p1.user.id]).toBe(0);
+      expect(updated.state.lives[p1.user.id]).toBe(2);
+      expect(updated.state.usedWords).toEqual([]);
+      expect(updated.state.history[0]).toMatchObject({
+        playerId: p1.user.id,
+        word: 'zzzzzzzzzz',
+        score: 0,
+        penalty: 'ILLEGAL_PATH',
+      });
+    });
+
+    it('penalises player with life loss when word is not in dictionary', async () => {
       const mockValidator: WordValidator = {
         isValidWord: async () => false,
       };
@@ -405,18 +538,506 @@ describe('Game Sessions & Turn Engine (Unit)', () => {
         payload: { move: { word: 'invalidwordxyz' }, expectedStateVersion: 0 },
       });
 
+      // Move succeeds (200): the game core records the penalty and advances the turn.
+      expect(moveRes.statusCode).toBe(200);
+      const updated = moveRes.json();
+
+      // State version must have advanced
+      expect(updated.stateVersion).toBe(1);
+
+      // Turn must have advanced to p2
+      expect(updated.currentPlayerId).toBe(p2.user.id);
+
+      // P1 must have lost a life
+      expect(updated.state.lives[p1.user.id]).toBe(2);
+
+      // P1 must not have gained score
+      expect(updated.state.scores[p1.user.id]).toBe(0);
+
+      // History entry must record the penalty
+      expect(updated.state.history).toHaveLength(1);
+      expect(updated.state.history[0].penalty).toBe('INVALID_DICTIONARY');
+    });
+
+    it('rejects move with 400 when word field is missing or empty', async () => {
+      const mockValidator: WordValidator = {
+        isValidWord: async () => false,
+      };
+      const { app, p1, p2 } = await setupTestApp(mockValidator);
+
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/game-sessions',
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { gameId: 'word-battle' },
+      });
+      const { publicId } = createRes.json();
+
+      await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/join`,
+        headers: { authorization: `Bearer ${p2.sessionToken}` },
+      });
+
+      // Empty word string — must be rejected before reaching game core
+      const moveRes = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/moves`,
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { move: { word: '   ' }, expectedStateVersion: 0 },
+      });
+
       expect(moveRes.statusCode).toBe(400);
       expect(moveRes.json().code).toBe('INVALID_MOVE');
 
-      // Verify session state was not modified and turn did not change
+      // State must not have changed
       const getRes = await app.inject({
         method: 'GET',
         url: `/game-sessions/${publicId}`,
         headers: { authorization: `Bearer ${p1.sessionToken}` },
       });
-      const current = getRes.json();
-      expect(current.stateVersion).toBe(0);
-      expect(current.currentPlayerId).toBe(p1.user.id);
+      expect(getRes.json().stateVersion).toBe(0);
+    });
+
+    it('expire-turn applies the timeout penalty only after the stored deadline, exactly once', async () => {
+      const start = new Date('2026-05-01T12:00:00.000Z');
+      const clock = createTestClock(start);
+      const { app, p1, p2 } = await setupTestApp(undefined, clock.now);
+
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/game-sessions',
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { gameId: 'word-battle' },
+      });
+      const { publicId } = createRes.json();
+
+      const joinRes = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/join`,
+        headers: { authorization: `Bearer ${p2.sessionToken}` },
+      });
+
+      // The server establishes the 15-second deadline when the turn becomes active
+      expect(joinRes.json().turnDeadlineAt).toBe(
+        new Date(start.getTime() + TURN_DURATION_MS).toISOString(),
+      );
+
+      // Before the deadline, even a participant asking for reconciliation cannot
+      // cause a penalty — the endpoint is server-verified, not client-authorized.
+      const early = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/expire-turn`,
+        headers: { authorization: `Bearer ${p2.sessionToken}` },
+        payload: { expectedStateVersion: 0 },
+      });
+      expect(early.statusCode).toBe(409);
+      expect(early.json().code).toBe('TURN_NOT_EXPIRED');
+
+      // The rejected request leaves state completely untouched
+      const before = await app.inject({
+        method: 'GET',
+        url: `/game-sessions/${publicId}`,
+      });
+      expect(before.json().stateVersion).toBe(0);
+      expect(before.json().state.lives[p1.user.id]).toBe(3);
+
+      // Advance the server clock to exactly the stored deadline
+      clock.advance(TURN_DURATION_MS);
+
+      const expireRes = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/expire-turn`,
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { expectedStateVersion: 0 },
+      });
+
+      expect(expireRes.statusCode).toBe(200);
+      const after = expireRes.json();
+
+      // Turn advances, version increments
+      expect(after.stateVersion).toBe(1);
+      expect(after.currentPlayerId).toBe(p2.user.id);
+
+      // P1 loses a life due to timeout
+      expect(after.state.lives[p1.user.id]).toBe(2);
+
+      // History records the timeout
+      expect(after.state.history).toHaveLength(1);
+      expect(after.state.history[0].penalty).toBe('TIMEOUT');
+
+      // The next turn receives a fresh deadline measured from the server clock
+      expect(after.turnDeadlineAt).toBe(
+        new Date(start.getTime() + 2 * TURN_DURATION_MS).toISOString(),
+      );
+
+      // Replaying the same request is rejected as stale (idempotence signal)
+      const replay = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/expire-turn`,
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { expectedStateVersion: 0 },
+      });
+      expect(replay.statusCode).toBe(409);
+      expect(replay.json().code).toBe('STALE_GAME_STATE');
+    });
+
+    it('expire-turn returns 409 STALE_GAME_STATE when state already advanced', async () => {
+      const mockValidator: WordValidator = {
+        isValidWord: async (word) => word === 'apple',
+      };
+      const { app, p1, p2 } = await setupTestApp(mockValidator);
+
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/game-sessions',
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { gameId: 'word-battle' },
+      });
+      const { publicId } = createRes.json();
+
+      await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/join`,
+        headers: { authorization: `Bearer ${p2.sessionToken}` },
+      });
+
+      // P1 submits a valid word (advances state from v0 to v1)
+      await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/moves`,
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { move: { word: 'apple' }, expectedStateVersion: 0 },
+      });
+
+      // Stale expire-turn (still references v0 — state already at v1)
+      const staleExpire = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/expire-turn`,
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { expectedStateVersion: 0 },
+      });
+
+      // Must return 409 so client can safely discard the stale timeout
+      expect(staleExpire.statusCode).toBe(409);
+      expect(staleExpire.json().code).toBe('STALE_GAME_STATE');
+    });
+  });
+
+  describe('Authoritative turn deadlines & timeout processing (Stage 2)', () => {
+    const start = new Date('2026-06-01T09:00:00.000Z');
+
+    async function startWordBattle(
+      app: FastifyInstance,
+      p1: { sessionToken: string },
+      p2: { sessionToken: string },
+    ) {
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/game-sessions',
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { gameId: 'word-battle' },
+      });
+      const { publicId } = createRes.json();
+      const joinRes = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/join`,
+        headers: { authorization: `Bearer ${p2.sessionToken}` },
+      });
+      return { publicId, joined: joinRes.json() };
+    }
+
+    it('word-battle sessions receive a server deadline on start; games without timeout support never do', async () => {
+      const clock = createTestClock(start);
+      const { app, p1, p2 } = await setupTestApp(undefined, clock.now);
+
+      const { joined } = await startWordBattle(app, p1, p2);
+      expect(joined.status).toBe('active');
+      expect(joined.turnDeadlineAt).toBe(
+        new Date(start.getTime() + TURN_DURATION_MS).toISOString(),
+      );
+
+      // The take-turn demo rejects timeout moves (capability probe), so its sessions
+      // must never receive a deadline — a game-agnostic sweeper would otherwise try
+      // to apply an unsupported move.
+      const demoCreate = await app.inject({
+        method: 'POST',
+        url: '/game-sessions',
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { gameId: 'take-turn-demo' },
+      });
+      const demoJoin = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${demoCreate.json().publicId}/join`,
+        headers: { authorization: `Bearer ${p2.sessionToken}` },
+      });
+      expect(demoJoin.json().status).toBe('active');
+      expect(demoJoin.json().turnDeadlineAt).toBeNull();
+    });
+
+    it('the deadline is never reset by reads, reconnects, or repeated polling', async () => {
+      const clock = createTestClock(start);
+      const { app, p1, p2 } = await setupTestApp(undefined, clock.now);
+      const { publicId, joined } = await startWordBattle(app, p1, p2);
+
+      const fixedDeadline = new Date(start.getTime() + TURN_DURATION_MS).toISOString();
+      expect(joined.turnDeadlineAt).toBe(fixedDeadline);
+
+      for (let i = 0; i < 3; i += 1) {
+        clock.advance(2_000); // 6 seconds total — still well inside the turn
+        const res = await app.inject({
+          method: 'GET',
+          url: `/game-sessions/${publicId}`,
+        });
+        expect(res.json().turnDeadlineAt).toBe(fixedDeadline);
+        expect(res.json().stateVersion).toBe(0);
+      }
+    });
+
+    it('an expired deadline is applied lazily on read, exactly once, leaving board and scores untouched', async () => {
+      const clock = createTestClock(start);
+      const { app, p1, p2 } = await setupTestApp(undefined, clock.now);
+      const { publicId, joined } = await startWordBattle(app, p1, p2);
+
+      clock.advance(TURN_DURATION_MS); // exactly at the persisted deadline
+
+      const first = await app.inject({
+        method: 'GET',
+        url: `/game-sessions/${publicId}`,
+      });
+      const s = first.json();
+
+      // Timeout penalty: 1 life lost, no points, board unchanged, turn advanced
+      expect(s.stateVersion).toBe(1);
+      expect(s.currentPlayerId).toBe(p2.user.id);
+      expect(s.state.lives[p1.user.id]).toBe(2);
+      expect(s.state.scores[p1.user.id]).toBe(0);
+      expect(s.state.usedWords).toEqual([]);
+      expect(JSON.stringify(s.state.board)).toBe(JSON.stringify(joined.state.board));
+      expect(s.state.history).toHaveLength(1);
+      expect(s.state.history[0].penalty).toBe('TIMEOUT');
+
+      // The next turn carries a fresh server deadline
+      expect(s.turnDeadlineAt).toBe(
+        new Date(start.getTime() + 2 * TURN_DURATION_MS).toISOString(),
+      );
+
+      // Repeated reads after expiry are consistent and cause no further advancement
+      const second = await app.inject({
+        method: 'GET',
+        url: `/game-sessions/${publicId}`,
+      });
+      expect(second.json()).toEqual(s);
+      expect(s.state.lives[p1.user.id]).toBe(2); // not 1 — the penalty applied once
+    });
+
+    it('a late move cannot steal a turn the deadline has already consumed', async () => {
+      const clock = createTestClock(start);
+      const mockValidator: WordValidator = { isValidWord: async () => true };
+      const { app, p1, p2 } = await setupTestApp(mockValidator, clock.now);
+      const { publicId, joined } = await startWordBattle(app, p1, p2);
+
+      const { word, path } = findFormableWordOnBoard(joined.state.board);
+
+      clock.advance(TURN_DURATION_MS);
+
+      // P1 (whose turn has expired) submits a perfectly formable word — the lazy
+      // reconciliation consumes the turn first and the late move is rejected.
+      const late = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/moves`,
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { move: { word, path }, expectedStateVersion: 0 },
+      });
+      expect(late.statusCode).toBe(409);
+      expect(late.json().code).toBe('STALE_GAME_STATE');
+
+      const after = await app.inject({
+        method: 'GET',
+        url: `/game-sessions/${publicId}`,
+      });
+      expect(after.json().stateVersion).toBe(1);
+      expect(after.json().state.history[0].penalty).toBe('TIMEOUT');
+      expect(after.json().state.scores[p1.user.id]).toBe(0);
+
+      // The new active player can play normally against the advanced version
+      const p2Move = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/moves`,
+        headers: { authorization: `Bearer ${p2.sessionToken}` },
+        payload: { move: { word, path }, expectedStateVersion: 1 },
+      });
+      expect(p2Move.statusCode).toBe(200);
+      expect(p2Move.json().stateVersion).toBe(2);
+      expect(p2Move.json().state.scores[p2.user.id]).toBe(word.length);
+    });
+
+    it('each move establishes a fresh deadline for the next turn from the server clock', async () => {
+      const clock = createTestClock(start);
+      const mockValidator: WordValidator = { isValidWord: async () => true };
+      const { app, p1, p2 } = await setupTestApp(mockValidator, clock.now);
+      const { publicId, joined } = await startWordBattle(app, p1, p2);
+
+      const { word, path } = findFormableWordOnBoard(joined.state.board);
+
+      clock.advance(5_000);
+      const move = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/moves`,
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { move: { word, path }, expectedStateVersion: 0 },
+      });
+      expect(move.statusCode).toBe(200);
+      expect(move.json().turnDeadlineAt).toBe(
+        new Date(start.getTime() + 5_000 + TURN_DURATION_MS).toISOString(),
+      );
+    });
+
+    it('direct timeout moves are rejected at the moves endpoint', async () => {
+      const { app, p1, p2 } = await setupTestApp();
+      const { publicId } = await startWordBattle(app, p1, p2);
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/moves`,
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { move: { type: 'timeout' }, expectedStateVersion: 0 },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().code).toBe('INVALID_MOVE');
+
+      const getRes = await app.inject({
+        method: 'GET',
+        url: `/game-sessions/${publicId}`,
+      });
+      expect(getRes.json().stateVersion).toBe(0);
+    });
+
+    it('expire-turn is refused for non-participants and for sessions without a deadline', async () => {
+      const clock = createTestClock(start);
+      const { app, p1, p2, p3 } = await setupTestApp(undefined, clock.now);
+
+      const { publicId } = await startWordBattle(app, p1, p2);
+      clock.advance(TURN_DURATION_MS);
+
+      const stranger = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/expire-turn`,
+        headers: { authorization: `Bearer ${p3.sessionToken}` },
+        payload: { expectedStateVersion: 0 },
+      });
+      expect(stranger.statusCode).toBe(403);
+      expect(stranger.json().code).toBe('PLAYER_NOT_IN_GAME');
+
+      // A demo session has no stored deadline: reconciliation is refused and no
+      // penalty can ever be applied to a game that does not support timeouts.
+      const demoCreate = await app.inject({
+        method: 'POST',
+        url: '/game-sessions',
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { gameId: 'take-turn-demo' },
+      });
+      const demoJoin = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${demoCreate.json().publicId}/join`,
+        headers: { authorization: `Bearer ${p2.sessionToken}` },
+      });
+      clock.advance(10 * TURN_DURATION_MS);
+
+      const demoExpire = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${demoCreate.json().publicId}/expire-turn`,
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { expectedStateVersion: 0 },
+      });
+      expect(demoExpire.statusCode).toBe(409);
+      expect(demoExpire.json().code).toBe('TURN_NOT_EXPIRED');
+
+      const demoGet = await app.inject({
+        method: 'GET',
+        url: `/game-sessions/${demoCreate.json().publicId}`,
+      });
+      expect(demoGet.json().status).toBe('active');
+      expect(demoGet.json().stateVersion).toBe(0);
+      expect(demoJoin.json().turnDeadlineAt).toBeNull();
+    });
+
+    it('repeated timeouts end the match by knockout and clear the deadline', async () => {
+      const clock = createTestClock(start);
+      const { app, p1, p2 } = await setupTestApp(undefined, clock.now);
+      const { publicId } = await startWordBattle(app, p1, p2);
+
+      // Five alternating expiries: P1 times out three times (3 lives), P2 twice.
+      const expireResponses = [];
+      for (let i = 0; i < 5; i += 1) {
+        clock.advance(TURN_DURATION_MS);
+        const active = i % 2 === 0 ? p1 : p2;
+        const res = await app.inject({
+          method: 'POST',
+          url: `/game-sessions/${publicId}/expire-turn`,
+          headers: { authorization: `Bearer ${active.sessionToken}` },
+          payload: { expectedStateVersion: i },
+        });
+        expect(res.statusCode).toBe(200);
+        expect(res.json().stateVersion).toBe(i + 1);
+        expireResponses.push(res);
+      }
+
+      const finished = expireResponses[4]!.json();
+      expect(finished.status).toBe('completed');
+      expect(finished.result.isKnockout).toBe(true);
+      expect(finished.result.winnerId).toBe(p2.user.id);
+      expect(finished.turnDeadlineAt).toBeNull();
+
+      // No further expiry can apply to a completed match
+      clock.advance(60_000);
+      const afterEnd = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/expire-turn`,
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { expectedStateVersion: 5 },
+      });
+      expect(afterEnd.statusCode).toBe(400);
+      expect(afterEnd.json().code).toBe('GAME_NOT_ACTIVE');
+
+      const reread = await app.inject({
+        method: 'GET',
+        url: `/game-sessions/${publicId}`,
+      });
+      expect(reread.json().status).toBe('completed');
+      expect(reread.json().stateVersion).toBe(5);
+    });
+
+    it('bounded sweeps expire each turn at most once and respect the batch limit', async () => {
+      const clock = createTestClock(start);
+      const { app, p1, p2, sessionService } = await setupTestApp(undefined, clock.now);
+
+      const a = await startWordBattle(app, p1, p2);
+      const b = await startWordBattle(app, p1, p2);
+
+      clock.advance(TURN_DURATION_MS);
+
+      // Batch limit 1: only one expired session is reconciled per sweep call
+      const r1 = await sessionService.reconcileExpiredTurns(1);
+      expect(r1).toEqual({ scanned: 1, reconciled: 1 });
+
+      const r2 = await sessionService.reconcileExpiredTurns(10);
+      expect(r2).toEqual({ scanned: 1, reconciled: 1 });
+
+      // Both turns consumed exactly once — nothing left to reconcile
+      const r3 = await sessionService.reconcileExpiredTurns(10);
+      expect(r3).toEqual({ scanned: 0, reconciled: 0 });
+
+      const sessionA = await app.inject({
+        method: 'GET',
+        url: `/game-sessions/${a.publicId}`,
+      });
+      expect(sessionA.json().stateVersion).toBe(1);
+      const sessionB = await app.inject({
+        method: 'GET',
+        url: `/game-sessions/${b.publicId}`,
+      });
+      expect(sessionB.json().stateVersion).toBe(1);
     });
   });
 });

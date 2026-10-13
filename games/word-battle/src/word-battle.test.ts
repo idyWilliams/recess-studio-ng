@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { GamePlayer } from '@recess/game-core';
 
 import {
+  evaluateMove,
   generateBoardTiles,
   isAdjacent,
   mulberry32,
@@ -593,6 +594,186 @@ describe('Word Battle — Game Core (Stage 1 Deterministic Rules)', () => {
       expect(next.scores.p1).toBe(0);
       expect(next.lives.p1).toBe(2);
       expect(next.turnCount).toBe(1);
+    });
+  });
+
+  describe('Board Validation Bypass Prevention (Stage 2)', () => {
+    // The exact board from the Stage 2 takeover review. Only words formable on THIS
+    // board may ever score or consume tiles.
+    const REPORT_BOARD_ROWS = ['YGLT', 'MHAS', 'ZTLW', 'UXOE'];
+
+    function boardFromRows(rows: string[]): BoardTile[][] {
+      return rows.map((letters, r) =>
+        letters.split('').map((letter, c) => ({
+          id: `t_r${r}_c${c}_v0`,
+          letter,
+          row: r,
+          col: c,
+        })),
+      );
+    }
+
+    function stateWithReportBoard(): WordBattleState {
+      const state = wordBattleGame.createInitialState(players, { seed: 1 });
+      state.board = boardFromRows(REPORT_BOARD_ROWS);
+      return state;
+    }
+
+    function expectIllegalPathPenalty(next: WordBattleState, word: string) {
+      expect(next.scores.p1).toBe(0); // no points
+      expect(next.lives.p1).toBe(2); // 1 life lost
+      expect(next.boardVersion).toBe(0); // board untouched
+      expect(next.usedWords).toEqual([]); // not recorded as used
+      expect(next.currentPlayerId).toBe('p2'); // turn passes
+      expect(next.history).toHaveLength(1);
+      expect(next.history[0]).toMatchObject({ playerId: 'p1', word, score: 0, penalty: 'ILLEGAL_PATH' });
+    }
+
+    it('rejects "xylophones" with no path (not formable: board has no P or N)', () => {
+      const state = stateWithReportBoard();
+
+      const evaluation = evaluateMove(state, { word: 'xylophones' });
+      expect(evaluation.isAccepted).toBe(false);
+      expect(evaluation.penaltyReason).toBe('ILLEGAL_PATH');
+
+      const next = wordBattleGame.applyMove(state, { word: 'xylophones' }, 'p1');
+      expectIllegalPathPenalty(next, 'xylophones');
+      expect(next.board).toEqual(state.board);
+    });
+
+    it('rejects "zzzqqq" with no path (Q is absent from the board)', () => {
+      const state = stateWithReportBoard();
+
+      const next = wordBattleGame.applyMove(state, { word: 'zzzqqq' }, 'p1');
+      expectIllegalPathPenalty(next, 'zzzqqq');
+    });
+
+    it('still accepts a formable word with no path via bounded DFS ("has")', () => {
+      const state = stateWithReportBoard();
+
+      const evaluation = evaluateMove(state, { word: 'has' });
+      expect(evaluation.isAccepted).toBe(true);
+      expect(evaluation.score).toBe(3);
+      expect(evaluation.resolvedPath).toEqual([
+        { row: 1, col: 1 },
+        { row: 1, col: 2 },
+        { row: 1, col: 3 },
+      ]);
+
+      const next = wordBattleGame.applyMove(state, { word: 'has' }, 'p1');
+      expect(next.scores.p1).toBe(3);
+      expect(next.lives.p1).toBe(3);
+      expect(next.usedWords).toEqual(['has']);
+      expect(next.boardVersion).toBe(1); // board cascaded and refilled
+    });
+
+    it('accepts an explicit valid path and cascades the board', () => {
+      const state = stateWithReportBoard();
+
+      const next = wordBattleGame.applyMove(
+        state,
+        {
+          word: 'has',
+          path: [
+            { row: 1, col: 1 },
+            { row: 1, col: 2 },
+            { row: 1, col: 3 },
+          ],
+        },
+        'p1',
+      );
+
+      expect(next.scores.p1).toBe(3);
+      expect(next.boardVersion).toBe(1);
+    });
+
+    it('rejects an explicit path whose tiles do not match the word letters', () => {
+      // Row 0 is Y G L T — the word "cat" cannot be spelled by those tiles.
+      const state = stateWithReportBoard();
+
+      const next = wordBattleGame.applyMove(
+        state,
+        {
+          word: 'cat',
+          path: [
+            { row: 0, col: 0 },
+            { row: 0, col: 1 },
+            { row: 0, col: 2 },
+          ],
+        },
+        'p1',
+      );
+
+      expectIllegalPathPenalty(next, 'cat');
+    });
+
+    it('rejects a path containing an out-of-bounds coordinate', () => {
+      const state = stateWithReportBoard();
+
+      const next = wordBattleGame.applyMove(
+        state,
+        {
+          word: 'has',
+          path: [
+            { row: 1, col: 1 },
+            { row: 1, col: 2 },
+            { row: 4, col: 3 },
+          ],
+        },
+        'p1',
+      );
+
+      expectIllegalPathPenalty(next, 'has');
+    });
+
+    it('rejects a path that reuses a tile within the same word', () => {
+      // "hah" would require using the single H tile twice.
+      const state = stateWithReportBoard();
+
+      const next = wordBattleGame.applyMove(
+        state,
+        {
+          word: 'hah',
+          path: [
+            { row: 1, col: 1 },
+            { row: 1, col: 2 },
+            { row: 1, col: 1 },
+          ],
+        },
+        'p1',
+      );
+
+      expectIllegalPathPenalty(next, 'hah');
+    });
+
+    it('rejects a path whose length does not match the word length', () => {
+      const state = stateWithReportBoard();
+
+      const next = wordBattleGame.applyMove(
+        state,
+        {
+          word: 'has',
+          path: [
+            { row: 1, col: 1 },
+            { row: 1, col: 2 },
+          ],
+        },
+        'p1',
+      );
+
+      expectIllegalPathPenalty(next, 'has');
+    });
+
+    it('rejects a word longer than the board via a bounded, terminating search', () => {
+      const state = stateWithReportBoard();
+      const tooLong = 'a'.repeat(20);
+
+      const evaluation = evaluateMove(state, { word: tooLong });
+      expect(evaluation.isAccepted).toBe(false);
+      expect(evaluation.penaltyReason).toBe('ILLEGAL_PATH');
+
+      const next = wordBattleGame.applyMove(state, { word: tooLong }, 'p1');
+      expectIllegalPathPenalty(next, tooLong);
     });
   });
 });

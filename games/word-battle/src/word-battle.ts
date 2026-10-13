@@ -204,8 +204,11 @@ export function validateBoardPath(
 }
 
 /**
- * Find a valid adjacent path on the board for a word (used as backward-compatibility
- * fallback when path is omitted in API/test calls before Stage 2).
+ * Find a valid adjacent path on the board for a word via a bounded, deterministic
+ * depth-first search. Used to resolve a word move when the client omits the path;
+ * returns `null` when the word cannot be formed from the current board.
+ * Search is bounded by the 4x4 grid and the visited-set pruning, so it never
+ * degenerates into an unbounded solver.
  */
 export function findPathOnBoard(
   board: BoardTile[][],
@@ -439,7 +442,9 @@ export function evaluateMove(
     };
   }
 
-  // Path omitted: attempt to find path on board
+  // Path omitted (or empty): resolve it with a bounded, deterministic DFS over the
+  // current board. A word is only accepted when it is demonstrably formable from the
+  // actual board via legal, adjacent, non-repeating tile coordinates.
   const foundPath = findPathOnBoard(state.board, normalized);
   if (foundPath) {
     return {
@@ -450,23 +455,8 @@ export function evaluateMove(
     };
   }
 
-  // Legacy compatibility: If path was omitted (pre-Stage-2 callers/tests),
-  // synthesize coordinates from top-left tiles so legacy test fixtures continue to function
-  // until Stage 2 migrates the API layer.
-  if (wordMove.path === undefined) {
-    const fallbackPath: BoardCoordinate[] = [];
-    const len = Math.min(normalized.length, BOARD_SIZE * BOARD_SIZE);
-    for (let i = 0; i < len; i++) {
-      fallbackPath.push({ row: Math.floor(i / BOARD_SIZE), col: i % BOARD_SIZE });
-    }
-    return {
-      isAccepted: true,
-      score: normalized.length,
-      normalizedWord: normalized,
-      resolvedPath: fallbackPath,
-    };
-  }
-
+  // The word cannot be formed on the current board. Apply the ILLEGAL_PATH penalty:
+  // no points, no tile consumption, 1 life lost, and the turn passes.
   return {
     isAccepted: false,
     score: 0,
