@@ -22,3 +22,9 @@ Milestones and notes for build-in-public updates. Entries are added as phases sh
 - Corrected a material ADR-007 incompatibility without changing the shared `GameDefinition` contract: the demo game's `applyMove` throws on timeout moves, so the service probes `validateMove` and only games that accept timeout moves receive deadlines.
 - Fixed a latent determinism defect exposed by the new PostgreSQL tests: player rows were loaded without `ORDER BY`, so the starting player — and with it the turn owner and timeout target — could vary with the query plan under load.
 - Verification: full test suite green (88 tests, including 9 against real PostgreSQL covering restart persistence, concurrent expire-turn, move-vs-timeout races, and multi-instance sweeps); the API suite passed on 5 consecutive runs; typecheck, lint, and full build pass. `format:check` continues to fail on pre-existing files (unchanged policy: no broad autoformatting); all lines authored in this phase are Prettier-clean.
+
+## Word Battle — Stage 2, Phase 2 audit fixes (2026-10-13)
+
+- Fixed a legacy-data trap found in the pre-integration audit: the deploy backfill can leave an expired deadline on an active session whose game cannot process timeout moves (take-turn-demo), which made reads fail with 409 and trapped the sweeper in an endless retry loop. Such deadlines are now self-healed and cleared as infrastructure metadata (`SessionRepository.clearTurnDeadline` guarded by the same optimistic locking; no state version consumed, no penalty, no move row) — verified against PostgreSQL with a planted backfill deadline.
+- Hardened `POST /game-sessions/:publicId/expire-turn`: a missing or malformed body is now a deterministic 400 `INVALID_INPUT` instead of an internal error.
+- Verification: full test suite green (91 tests, including 10 against real PostgreSQL); the new regressions cover both fixes.

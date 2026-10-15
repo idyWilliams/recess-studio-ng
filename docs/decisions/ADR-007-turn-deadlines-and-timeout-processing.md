@@ -134,3 +134,11 @@ Shipped as decided above. Concrete facts (all verified against live PostgreSQL):
 - **Deployment assumption:** instances enforce one shared timeline; server clocks are
   expected to be NTP-synchronised. Cross-instance correctness does not depend on clock
   equality — races resolve through optimistic locking, not timing.
+- **Legacy-deadline self-heal (audit follow-up, 2026-10-13):** the deployment backfill can
+  leave an expired deadline on an active session whose game definition cannot process
+  timeout moves (e.g. take-turn-demo). Lazy reconciliation and the sweeper detect such rows
+  with the same capability probe and clear the deadline as infrastructure metadata through
+  `SessionRepository.clearTurnDeadline` (optimistically guarded on `stateVersion`; no
+  version is consumed and no move row is written): reads return 200 with a `null` deadline,
+  the game continues untreated at the same version, and the sweeper stops retrying the row.
+  Verified against PostgreSQL with a planted backfill deadline.

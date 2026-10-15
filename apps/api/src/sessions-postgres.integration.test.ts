@@ -842,4 +842,114 @@ describe('PostgreSQL Game Sessions & Turn Concurrency Integration', () => {
 
     await app.close();
   });
+
+  it('clears a legacy backfilled deadline on a game that cannot process timeouts', async () => {
+    if (!canConnect) return;
+
+    const env = {
+      PORT: 3010,
+      NODE_ENV: 'test' as const,
+      DATABASE_URL: TEST_DATABASE_URL,
+    };
+    const clock = createClock(new Date('2030-01-04T10:00:00.000Z'));
+    const gameRegistry = new GameRegistry();
+    const sessionService = new SessionService(
+      new PostgresSessionRepository(db),
+      gameRegistry,
+      undefined,
+      clock.now,
+    );
+    const app = buildApp(
+      env,
+      new IdentityService(new PostgresIdentityRepository(db)),
+      sessionService,
+      gameRegistry,
+    );
+
+    const tag = `${Date.now().toString(36)}_lg`;
+    const p1 = (
+      await app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: { username: `L1_${tag}` },
+      })
+    ).json();
+    const p2 = (
+      await app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: { username: `L2_${tag}` },
+      })
+    ).json();
+
+    const session = (
+      await app.inject({
+        method: 'POST',
+        url: '/game-sessions',
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { gameId: 'take-turn-demo' },
+      })
+    ).json();
+
+    const joined = (
+      await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${session.publicId}/join`,
+        headers: { authorization: `Bearer ${p2.sessionToken}` },
+      })
+    ).json();
+    expect(joined.status).toBe('active');
+    // The capability probe means the demo game itself never receives a deadline.
+    expect(joined.turnDeadlineAt).toBeNull();
+
+    // Simulate the ADR-007 deployment backfill: an already-active take-turn-demo row
+    // that received a deadline its game definition can never honour.
+    await db
+      .update(gameSessions)
+      .set({ turnDeadlineAt: new Date(clock.now().getTime() - 60_000) })
+      .where(eq(gameSessions.id, session.id));
+
+    // A read reconciles: the unsupported deadline is cleared as infrastructure
+    // metadata — no penalty, no turn advance — instead of a 409 INVALID_MOVE.
+    const read = await app.inject({
+      method: 'GET',
+      url: `/game-sessions/${session.publicId}`,
+    });
+    expect(read.statusCode).toBe(200);
+    const state = read.json();
+    expect(state.turnDeadlineAt).toBeNull();
+    expect(state.stateVersion).toBe(0);
+    expect(state.status).toBe('active');
+    expect(state.currentPlayerId).toBe(p1.user.id);
+
+    // The clear is persisted in PostgreSQL...
+    const [row] = await db
+      .select()
+      .from(gameSessions)
+      .where(eq(gameSessions.id, session.id));
+    expect(row?.turnDeadlineAt).toBeNull();
+    expect(row?.stateVersion).toBe(0);
+
+    // ...and the game continues normally: P1's turn still works at the same version.
+    const move = await app.inject({
+      method: 'POST',
+      url: `/game-sessions/${session.publicId}/moves`,
+      headers: { authorization: `Bearer ${p1.sessionToken}` },
+      payload: { move: { points: 1 }, expectedStateVersion: 0 },
+    });
+    expect(move.statusCode).toBe(200);
+    expect(move.json().stateVersion).toBe(1);
+
+    // expire-turn now honestly reports that no deadline exists (nothing was applied).
+    const expire = await app.inject({
+      method: 'POST',
+      url: `/game-sessions/${session.publicId}/expire-turn`,
+      headers: { authorization: `Bearer ${p1.sessionToken}` },
+      payload: { expectedStateVersion: 1 },
+    });
+    expect(expire.statusCode).toBe(409);
+    expect(expire.json().code).toBe('TURN_NOT_EXPIRED');
+
+    await app.close();
+  });
 });

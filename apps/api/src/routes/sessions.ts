@@ -6,6 +6,7 @@ import type {
   SubmitMoveInput,
 } from '@recess/shared';
 
+import { AppError } from '../errors/app-error.js';
 import type { IdentityService } from '../identity/identity-service.js';
 import type { SessionService } from '../sessions/session-service.js';
 import { authenticateRequest } from './auth-helper.js';
@@ -71,7 +72,8 @@ export function registerSessionRoutes(
    * Infrastructure failures (network errors, server crash, restarts) NEVER cost a
    * life: the deadline lives in the database and is consumed at most once.
    *
-   * Body: { expectedStateVersion: number }
+   * Body: { expectedStateVersion: number } — a missing or malformed body is rejected
+   * with 400 INVALID_INPUT before any session lookup.
    */
   app.post<{
     Params: { publicId: string };
@@ -79,7 +81,24 @@ export function registerSessionRoutes(
   }>('/game-sessions/:publicId/expire-turn', async (request) => {
     const auth = await authenticateRequest(request, identityService);
     const { publicId } = request.params;
-    const { expectedStateVersion } = request.body;
+
+    // Body guard: a missing or malformed body must be a deterministic 400, never a
+    // TypeError surfacing as an internal error. `expectedStateVersion` is a non-negative
+    // integer state version the client last observed.
+    const { expectedStateVersion } = (request.body ?? {}) as {
+      expectedStateVersion?: unknown;
+    };
+    if (
+      typeof expectedStateVersion !== 'number' ||
+      !Number.isInteger(expectedStateVersion) ||
+      expectedStateVersion < 0
+    ) {
+      throw new AppError(
+        'INVALID_INPUT',
+        'expectedStateVersion must be a non-negative integer',
+        400,
+      );
+    }
 
     return sessionService.expireTurn(auth.user.id, publicId, expectedStateVersion);
   });

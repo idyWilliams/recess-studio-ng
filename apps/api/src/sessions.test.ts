@@ -5,6 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import type { BoardCoordinate, BoardTile } from '@recess/game-word-battle';
 
 import { buildApp } from './app.js';
+import { demoGame } from './games/demo-game.js';
 import { GameRegistry } from './games/game-registry.js';
 import type { WordValidator } from './games/word-validator.js';
 import { IdentityService } from './identity/identity-service.js';
@@ -962,6 +963,48 @@ describe('Game Sessions & Turn Engine (Unit)', () => {
       expect(demoJoin.json().turnDeadlineAt).toBeNull();
     });
 
+    it('expire-turn rejects missing or malformed bodies with 400 INVALID_INPUT', async () => {
+      const { app, p1, p2 } = await setupTestApp();
+      const { publicId, joined } = await startWordBattle(app, p1, p2);
+
+      // No body at all must be a deterministic 400, never an internal error.
+      const noBody = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/expire-turn`,
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+      });
+      expect(noBody.statusCode).toBe(400);
+      expect(noBody.json().code).toBe('INVALID_INPUT');
+
+      const emptyObject = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/expire-turn`,
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: {},
+      });
+      expect(emptyObject.statusCode).toBe(400);
+      expect(emptyObject.json().code).toBe('INVALID_INPUT');
+
+      const wrongType = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/expire-turn`,
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { expectedStateVersion: '0' },
+      });
+      expect(wrongType.statusCode).toBe(400);
+      expect(wrongType.json().code).toBe('INVALID_INPUT');
+
+      // The rejected requests never touched the session: the turn and its deadline
+      // remain exactly as they were when the game started.
+      const get = await app.inject({
+        method: 'GET',
+        url: `/game-sessions/${publicId}`,
+      });
+      expect(get.json().stateVersion).toBe(0);
+      expect(get.json().turnDeadlineAt).toBe(joined.turnDeadlineAt);
+      expect(get.json().currentPlayerId).toBe(p1.user.id);
+    });
+
     it('repeated timeouts end the match by knockout and clear the deadline', async () => {
       const clock = createTestClock(start);
       const { app, p1, p2 } = await setupTestApp(undefined, clock.now);
@@ -1038,6 +1081,71 @@ describe('Game Sessions & Turn Engine (Unit)', () => {
         url: `/game-sessions/${b.publicId}`,
       });
       expect(sessionB.json().stateVersion).toBe(1);
+    });
+
+    it('self-heals a legacy backfilled deadline on a game that cannot process timeouts', async () => {
+      const clock = createTestClock(start);
+      const { app, p1, p2, sessionService, sessionRepo } = await setupTestApp(
+        undefined,
+        clock.now,
+      );
+
+      // Simulate the ADR-007 deployment backfill: an active take-turn-demo session
+      // holding a deadline its game definition can never honour (it rejects timeout
+      // moves), planted directly through the repository.
+      const legacy = await sessionRepo.createSession({
+        publicId: 'legacy-deadline-demo',
+        gameId: 'take-turn-demo',
+        status: 'waiting',
+        state: {},
+        stateVersion: 0,
+        currentPlayerId: null,
+        creatorUserId: p1.user.id,
+        creatorSeat: '0',
+      });
+      await sessionRepo.addPlayer(legacy.id, p2.user.id, '1');
+      const demoState = demoGame.createInitialState([
+        { id: p1.user.id, displayName: 'PlayerOne' },
+        { id: p2.user.id, displayName: 'PlayerTwo' },
+      ]);
+      await sessionRepo.startSession(
+        legacy.id,
+        demoState,
+        demoState.currentPlayerId,
+        new Date(start.getTime() - 60_000),
+      );
+
+      // Reads reconcile: the unsupported deadline is cleared as infrastructure metadata —
+      // no penalty, no turn advance — instead of failing the read with an INVALID_MOVE.
+      const read = await app.inject({
+        method: 'GET',
+        url: '/game-sessions/legacy-deadline-demo',
+      });
+      expect(read.statusCode).toBe(200);
+      expect(read.json().turnDeadlineAt).toBeNull();
+      expect(read.json().stateVersion).toBe(0);
+      expect(read.json().status).toBe('active');
+      expect(read.json().currentPlayerId).toBe(p1.user.id);
+
+      const stored = await sessionRepo.findSessionByPublicId('legacy-deadline-demo');
+      expect(stored?.turnDeadlineAt).toBeNull();
+
+      // The game continues normally at the same state version.
+      const move = await app.inject({
+        method: 'POST',
+        url: '/game-sessions/legacy-deadline-demo/moves',
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { move: { points: 1 }, expectedStateVersion: 0 },
+      });
+      expect(move.statusCode).toBe(200);
+      expect(move.json().stateVersion).toBe(1);
+
+      // The sweeper no longer sees the healed session, so it cannot retry it forever.
+      clock.advance(10 * TURN_DURATION_MS);
+      expect(await sessionService.reconcileExpiredTurns(10)).toEqual({
+        scanned: 0,
+        reconciled: 0,
+      });
     });
   });
 });

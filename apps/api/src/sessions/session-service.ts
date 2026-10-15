@@ -477,6 +477,30 @@ export class SessionService {
       return { session, transitioned: false };
     }
 
+    // Self-heal for sessions whose game definition cannot process timeout moves (e.g.
+    // take-turn-demo rows that received the ADR-007 deployment backfill deadline): such a
+    // deadline can never be honoured, so it is cleared as infrastructure metadata — no game
+    // state changes, no penalty, no turn advance — instead of surfacing an INVALID_MOVE
+    // error on every read and trapping the sweeper in an endless retry loop.
+    const game = this.gameRegistry.get(session.gameId);
+    const playerId = session.currentPlayerId;
+    if (
+      game &&
+      playerId &&
+      !this.gameSupportsTurnTimeouts(game, session.state, playerId)
+    ) {
+      const cleared = await this.repo.clearTurnDeadline(
+        session.id,
+        session.stateVersion,
+      );
+      if (cleared) {
+        return { session: cleared, transitioned: false };
+      }
+      // A concurrent writer beat the clear (e.g. a move); report the fresh record.
+      const fresh = await this.repo.findSessionById(session.id);
+      return { session: fresh ?? session, transitioned: false };
+    }
+
     try {
       const updated = await this.applyTurnTimeout(session, now);
       return { session: updated, transitioned: true };

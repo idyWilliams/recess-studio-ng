@@ -76,6 +76,19 @@ export interface SessionRepository {
   }): Promise<SessionWithPlayers>;
 
   /**
+   * Removes a stored turn deadline without touching game state. Used to self-heal sessions
+   * whose game definition cannot process timeout moves but that carry a persisted deadline
+   * (e.g. rows that received the ADR-007 deployment backfill). Optimistically guarded on
+   * the state version — returns null when a concurrent writer has moved on, and the caller
+   * re-reads the fresh record. A deadline is infrastructure metadata, not game state: no
+   * state version is consumed, no move row is written.
+   */
+  clearTurnDeadline(
+    sessionId: string,
+    expectedVersion: number,
+  ): Promise<SessionWithPlayers | null>;
+
+  /**
    * Ids of active sessions whose persisted turn deadline is at or before `now`, oldest
    * deadline first. Used by the bounded timeout sweeper (ADR-007). Sessions without a
    * deadline (null) are never returned.
@@ -341,6 +354,30 @@ export class PostgresSessionRepository implements SessionRepository {
     });
   }
 
+  async clearTurnDeadline(
+    sessionId: string,
+    expectedVersion: number,
+  ): Promise<SessionWithPlayers | null> {
+    return await this.db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(gameSessions)
+        .set({ turnDeadlineAt: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(gameSessions.id, sessionId),
+            eq(gameSessions.stateVersion, expectedVersion),
+          ),
+        )
+        .returning();
+
+      if (!updated) return null;
+
+      const players = await this.getPlayersForSession(sessionId, tx);
+
+      return { ...this.toSessionRecord(updated), players };
+    });
+  }
+
   async findExpiredActiveSessions(now: Date, limit: number): Promise<string[]> {
     const rows = await this.db
       .select({ id: gameSessions.id })
@@ -505,6 +542,18 @@ export class InMemorySessionRepository implements SessionRepository {
     session.updatedAt = now;
 
     const players = this.players.get(data.sessionId) ?? [];
+    return { ...session, players };
+  }
+
+  async clearTurnDeadline(
+    sessionId: string,
+    expectedVersion: number,
+  ): Promise<SessionWithPlayers | null> {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.stateVersion !== expectedVersion) return null;
+    session.turnDeadlineAt = null;
+    session.updatedAt = new Date().toISOString();
+    const players = this.players.get(sessionId) ?? [];
     return { ...session, players };
   }
 
