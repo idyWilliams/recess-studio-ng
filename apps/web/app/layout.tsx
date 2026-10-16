@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { AppHeader } from '@/components/navigation/AppHeader';
 import { BottomNav } from '@/components/navigation/BottomNav';
+import { QueryProvider } from '@/components/providers/QueryProvider';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -22,9 +23,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="flex min-h-dvh flex-col bg-recess-cream text-recess-text-primary antialiased">
-        <AppHeader />
-        <div className="flex-1 pb-24 sm:pb-12">{children}</div>
-        <BottomNav />
+        <QueryProvider>
+          <AppHeader />
+          <div className="flex-1 pb-24 sm:pb-12">{children}</div>
+          <BottomNav />
+        </QueryProvider>
       </body>
     </html>
   );
