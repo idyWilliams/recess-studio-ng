@@ -6,8 +6,9 @@ import type { ReactNode } from 'react';
 import { TurnIndicator, type MatchStatusState } from '@recess/ui';
 
 interface ArenaShellProps {
-  status: MatchStatusState;
-  opponentName?: string;
+  /** Header status chip; null while loading/errored (no match state to show yet). */
+  status: MatchStatusState | null;
+  opponentName?: string | undefined;
   children: ReactNode;
 }
 
@@ -74,7 +75,11 @@ export function ArenaShell({ status, opponentName, children }: ArenaShellProps) 
             </span>
           </div>
 
-          <TurnIndicator status={status} opponentName={opponentName} />
+          {status ? (
+            <TurnIndicator status={status} opponentName={opponentName} />
+          ) : (
+            <span className="w-16" aria-hidden="true" />
+          )}
         </div>
       </header>
 

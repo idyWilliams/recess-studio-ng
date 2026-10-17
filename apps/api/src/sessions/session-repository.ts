@@ -51,11 +51,23 @@ export interface SessionRepository {
     currentPlayerId: string | null;
     creatorUserId: string;
     creatorSeat: string;
+    /**
+     * Display username for the creator's player row. Denormalized convenience data:
+     * the Postgres repository ignores it and resolves usernames by joining
+     * `gaming_profiles` at read time (the single source of truth); the InMemory
+     * repository uses it as its fallback when no explicit `setUsername` entry exists.
+     */
+    creatorUsername?: string | undefined;
   }): Promise<SessionWithPlayers>;
 
   findSessionByPublicId(publicId: string): Promise<SessionWithPlayers | null>;
   findSessionById(id: string): Promise<SessionWithPlayers | null>;
-  addPlayer(sessionId: string, userId: string, seat: string): Promise<PlayerRecord>;
+  addPlayer(
+    sessionId: string,
+    userId: string,
+    seat: string,
+    username?: string | undefined,
+  ): Promise<PlayerRecord>;
   startSession(
     sessionId: string,
     state: unknown,
@@ -438,7 +450,7 @@ export class InMemorySessionRepository implements SessionRepository {
       id: crypto.randomUUID(),
       sessionId: id,
       userId: data.creatorUserId,
-      username: this.usernames.get(data.creatorUserId) ?? 'Player',
+      username: this.usernames.get(data.creatorUserId) ?? data.creatorUsername ?? 'Player',
       seat: data.creatorSeat,
       joinedAt: now,
     };

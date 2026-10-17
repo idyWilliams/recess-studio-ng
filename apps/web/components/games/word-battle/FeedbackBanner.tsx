@@ -1,6 +1,6 @@
 'use client';
 
-import type { FeedbackType, MoveFeedback } from '@/lib/word-battle-view';
+import type { MoveFeedback } from '@/lib/word-battle-view';
 
 interface FeedbackBannerProps {
   feedback: MoveFeedback | null;
