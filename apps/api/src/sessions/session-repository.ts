@@ -176,6 +176,8 @@ export class PostgresSessionRepository implements SessionRepository {
     currentPlayerId: string | null;
     creatorUserId: string;
     creatorSeat: string;
+    /** Accepted for interface compatibility; Postgres resolves usernames via JOIN. */
+    creatorUsername?: string | undefined;
   }): Promise<SessionWithPlayers> {
     return await this.db.transaction(async (tx) => {
       const [insertedSession] = await tx
@@ -238,6 +240,7 @@ export class PostgresSessionRepository implements SessionRepository {
     sessionId: string,
     userId: string,
     seat: string,
+    _username?: string | undefined,
   ): Promise<PlayerRecord> {
     try {
       const [inserted] = await this.db
@@ -426,6 +429,7 @@ export class InMemorySessionRepository implements SessionRepository {
     currentPlayerId: string | null;
     creatorUserId: string;
     creatorSeat: string;
+    creatorUsername?: string | undefined;
   }): Promise<SessionWithPlayers> {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
@@ -480,6 +484,7 @@ export class InMemorySessionRepository implements SessionRepository {
     sessionId: string,
     userId: string,
     seat: string,
+    username?: string | undefined,
   ): Promise<PlayerRecord> {
     const sessionPlayers = this.players.get(sessionId) ?? [];
     if (sessionPlayers.some((p) => p.userId === userId)) {
@@ -493,7 +498,7 @@ export class InMemorySessionRepository implements SessionRepository {
       id: crypto.randomUUID(),
       sessionId,
       userId,
-      username: this.usernames.get(userId) ?? 'Player',
+      username: this.usernames.get(userId) ?? username ?? 'Player',
       seat,
       joinedAt: new Date().toISOString(),
     };
