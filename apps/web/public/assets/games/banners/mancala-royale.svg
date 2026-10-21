@@ -1,0 +1,140 @@
+<svg width="400" height="220" viewBox="0 0 400 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="mancalaGlow" cx="200" cy="110" r="140" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#10B981" stop-opacity="0.45"/>
+      <stop offset="50%" stop-color="#D97706" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#05070B" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="woodBoard" x1="40" y1="60" x2="360" y2="160" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#451A03"/>
+      <stop offset="40%" stop-color="#78350F"/>
+      <stop offset="70%" stop-color="#2D1204"/>
+      <stop offset="100%" stop-color="#1C0A02"/>
+    </linearGradient>
+    <radialGradient id="pitDepth" cx="0.5" cy="0.4" r="0.6">
+      <stop offset="0%" stop-color="#1A0A03"/>
+      <stop offset="70%" stop-color="#0D0502"/>
+      <stop offset="100%" stop-color="#3D1A08"/>
+    </radialGradient>
+    <radialGradient id="emeraldSeed" cx="0.3" cy="0.3" r="0.7">
+      <stop offset="0%" stop-color="#A7F3D0"/>
+      <stop offset="45%" stop-color="#10B981"/>
+      <stop offset="90%" stop-color="#047857"/>
+      <stop offset="100%" stop-color="#064E3B"/>
+    </radialGradient>
+    <radialGradient id="amberSeed" cx="0.3" cy="0.3" r="0.7">
+      <stop offset="0%" stop-color="#FEF3C7"/>
+      <stop offset="45%" stop-color="#F59E0B"/>
+      <stop offset="90%" stop-color="#B45309"/>
+      <stop offset="100%" stop-color="#78350F"/>
+    </radialGradient>
+    <radialGradient id="rubySeed" cx="0.3" cy="0.3" r="0.7">
+      <stop offset="0%" stop-color="#FECDD3"/>
+      <stop offset="45%" stop-color="#F43F5E"/>
+      <stop offset="90%" stop-color="#BE123C"/>
+      <stop offset="100%" stop-color="#881337"/>
+    </radialGradient>
+    <linearGradient id="crownGold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FDE68A"/>
+      <stop offset="50%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+    <filter id="royalGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Background Base & Glow -->
+  <rect width="400" height="220" rx="24" fill="#06090E"/>
+  <rect width="400" height="220" rx="24" fill="url(#mancalaGlow)"/>
+
+  <!-- Ancient Carved Wooden Board Frame (Isometric 3D Feel) -->
+  <g transform="translate(20, 45)">
+    <!-- Board Base Shadow -->
+    <rect x="18" y="22" width="324" height="114" rx="36" fill="#050302" fill-opacity="0.8"/>
+    <!-- Board Solid Body -->
+    <rect x="20" y="16" width="320" height="112" rx="36" fill="url(#woodBoard)" stroke="#92400E" stroke-width="2"/>
+    <!-- Board Inner Bevel Lip -->
+    <rect x="26" y="22" width="308" height="100" rx="30" fill="none" stroke="#B45309" stroke-opacity="0.4" stroke-width="1.5"/>
+
+    <!-- Left Kalah Store (Big Pit) -->
+    <rect x="36" y="32" width="34" height="80" rx="17" fill="url(#pitDepth)" stroke="#B45309" stroke-width="1.5"/>
+    <!-- Seeds in Left Store -->
+    <circle cx="53" cy="55" r="7" fill="url(#emeraldSeed)"/>
+    <circle cx="50" cy="72" r="7" fill="url(#amberSeed)"/>
+    <circle cx="56" cy="88" r="7" fill="url(#rubySeed)"/>
+
+    <!-- Right Kalah Store (Big Pit) -->
+    <rect x="290" y="32" width="34" height="80" rx="17" fill="url(#pitDepth)" stroke="#B45309" stroke-width="1.5"/>
+    <!-- Seeds in Right Store -->
+    <circle cx="307" cy="52" r="7" fill="url(#rubySeed)"/>
+    <circle cx="304" cy="69" r="7" fill="url(#emeraldSeed)"/>
+    <circle cx="310" cy="86" r="7" fill="url(#amberSeed)"/>
+    <circle cx="305" cy="95" r="6" fill="url(#emeraldSeed)"/>
+
+    <!-- Pits Top Row (6 pits) -->
+    <!-- Pit 1 -->
+    <circle cx="95" cy="50" r="16" fill="url(#pitDepth)" stroke="#78350F" stroke-width="1"/>
+    <circle cx="92" cy="48" r="5.5" fill="url(#emeraldSeed)"/>
+    <circle cx="100" cy="52" r="5.5" fill="url(#amberSeed)"/>
+    <!-- Pit 2 -->
+    <circle cx="135" cy="50" r="16" fill="url(#pitDepth)" stroke="#78350F" stroke-width="1"/>
+    <circle cx="132" cy="48" r="5.5" fill="url(#amberSeed)"/>
+    <circle cx="140" cy="52" r="5.5" fill="url(#rubySeed)"/>
+    <circle cx="136" cy="56" r="5" fill="url(#emeraldSeed)"/>
+    <!-- Pit 3 -->
+    <circle cx="175" cy="50" r="16" fill="url(#pitDepth)" stroke="#78350F" stroke-width="1"/>
+    <circle cx="173" cy="50" r="5.5" fill="url(#emeraldSeed)"/>
+    <circle cx="179" cy="54" r="5.5" fill="url(#amberSeed)"/>
+    <!-- Pit 4 -->
+    <circle cx="215" cy="50" r="16" fill="url(#pitDepth)" stroke="#78350F" stroke-width="1"/>
+    <circle cx="212" cy="48" r="5.5" fill="url(#rubySeed)"/>
+    <circle cx="218" cy="53" r="5.5" fill="url(#emeraldSeed)"/>
+    <!-- Pit 5 -->
+    <circle cx="255" cy="50" r="16" fill="url(#pitDepth)" stroke="#78350F" stroke-width="1"/>
+    <circle cx="252" cy="48" r="5.5" fill="url(#amberSeed)"/>
+    <circle cx="260" cy="52" r="5.5" fill="url(#amberSeed)"/>
+
+    <!-- Pits Bottom Row (6 pits) -->
+    <!-- Pit 1 -->
+    <circle cx="95" cy="94" r="16" fill="url(#pitDepth)" stroke="#78350F" stroke-width="1"/>
+    <circle cx="93" cy="92" r="5.5" fill="url(#emeraldSeed)"/>
+    <circle cx="99" cy="96" r="5.5" fill="url(#rubySeed)"/>
+    <!-- Pit 2 (Active highlighted pit!) -->
+    <circle cx="135" cy="94" r="17" fill="url(#pitDepth)" stroke="#10B981" stroke-width="2" filter="url(#royalGlow)"/>
+    <circle cx="130" cy="91" r="5.5" fill="url(#emeraldSeed)"/>
+    <circle cx="138" cy="90" r="5.5" fill="url(#amberSeed)"/>
+    <circle cx="134" cy="98" r="5.5" fill="url(#emeraldSeed)"/>
+    <circle cx="140" cy="96" r="5.5" fill="url(#rubySeed)"/>
+    <!-- Pit 3 -->
+    <circle cx="175" cy="94" r="16" fill="url(#pitDepth)" stroke="#78350F" stroke-width="1"/>
+    <circle cx="173" cy="93" r="5.5" fill="url(#amberSeed)"/>
+    <circle cx="180" cy="96" r="5.5" fill="url(#emeraldSeed)"/>
+    <!-- Pit 4 -->
+    <circle cx="215" cy="94" r="16" fill="url(#pitDepth)" stroke="#78350F" stroke-width="1"/>
+    <circle cx="214" cy="93" r="5.5" fill="url(#rubySeed)"/>
+    <circle cx="220" cy="97" r="5.5" fill="url(#amberSeed)"/>
+    <!-- Pit 5 -->
+    <circle cx="255" cy="94" r="16" fill="url(#pitDepth)" stroke="#78350F" stroke-width="1"/>
+    <circle cx="253" cy="92" r="5.5" fill="url(#emeraldSeed)"/>
+    <circle cx="259" cy="96" r="5.5" fill="url(#emeraldSeed)"/>
+  </g>
+
+  <!-- Golden Imperial Crown Accent at Top Center -->
+  <g transform="translate(182, 16)">
+    <path d="M0 24L7 6L18 16L29 6L36 24H0Z" fill="url(#crownGold)" stroke="#FEF3C7" stroke-width="1.2"/>
+    <circle cx="7" cy="5" r="2.5" fill="#FEF3C7"/>
+    <circle cx="18" cy="14" r="2.5" fill="#FEF3C7"/>
+    <circle cx="29" cy="5" r="2.5" fill="#FEF3C7"/>
+    <!-- Crown Jewels -->
+    <circle cx="18" cy="20" r="2.5" fill="#10B981"/>
+    <circle cx="9" cy="20" r="2" fill="#F43F5E"/>
+    <circle cx="27" cy="20" r="2" fill="#F43F5E"/>
+  </g>
+
+  <!-- Ambient Sowing Motion Arc (Gems flowing across board) -->
+  <path d="M155 130 C190 90, 260 90, 310 100" stroke="#10B981" stroke-width="2" stroke-dasharray="4 4" stroke-opacity="0.6"/>
+  <!-- Floating Gem Mid-Air -->
+  <circle cx="230" cy="92" r="6" fill="url(#emeraldSeed)" filter="url(#royalGlow)"/>
+</svg>

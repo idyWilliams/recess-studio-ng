@@ -1255,4 +1255,52 @@ describe('Game Sessions & Turn Engine (Unit)', () => {
       expect(spectatorReject.statusCode).toBe(403);
     });
   });
+
+  describe('Mancala Royale Session Integration', () => {
+    it('creates, joins, and plays a server-authoritative Mancala match', async () => {
+      const { app, p1, p2 } = await setupTestApp();
+
+      // 1. P1 creates a Mancala session
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/game-sessions',
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { gameId: 'mancala' },
+      });
+      expect(createRes.statusCode).toBe(201);
+      const session = createRes.json();
+      expect(session.gameId).toBe('mancala');
+      expect(session.status).toBe('waiting');
+      const publicId = session.publicId;
+
+      // 2. P2 joins the match
+      const joinRes = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/join`,
+        headers: { authorization: `Bearer ${p2.sessionToken}` },
+      });
+      expect(joinRes.statusCode).toBe(200);
+      const activeSession = joinRes.json();
+      expect(activeSession.status).toBe('active');
+      expect(activeSession.currentPlayerId).toBe(p1.user.id);
+      expect(activeSession.state.pits).toHaveLength(14);
+      expect(activeSession.state.pits[6]).toBe(0); // P1 store empty at start
+
+      // 3. P1 sows from pit 2 (which lands in store 6 and grants an extra turn)
+      const moveRes = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/moves`,
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: {
+          move: { pitIndex: 2 },
+          expectedStateVersion: activeSession.stateVersion,
+        },
+      });
+      expect(moveRes.statusCode).toBe(200);
+      const movedSession = moveRes.json();
+      expect(movedSession.state.pits[2]).toBe(0);
+      expect(movedSession.state.pits[6]).toBe(1);
+      expect(movedSession.currentPlayerId).toBe(p1.user.id); // Extra turn!
+    });
+  });
 });

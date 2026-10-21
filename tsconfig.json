@@ -5,6 +5,7 @@
     { "path": "packages/game-core" },
     { "path": "packages/ui" },
     { "path": "games/word-battle" },
+    { "path": "games/mancala" },
     { "path": "database" }
   ]
 }
