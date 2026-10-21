@@ -4,6 +4,7 @@ import { games, type Database } from '@recess/database';
 import { wordBattleGame } from '@recess/game-word-battle';
 import { mancalaGame } from '@recess/game-mancala';
 import { whotGame } from '@recess/game-whot';
+import { ludoGame } from '@recess/game-ludo';
 
 import { demoGame } from './demo-game.js';
 
@@ -16,6 +17,7 @@ export class GameRegistry {
     this.register(wordBattleGame);
     this.register(mancalaGame);
     this.register(whotGame);
+    this.register(ludoGame);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

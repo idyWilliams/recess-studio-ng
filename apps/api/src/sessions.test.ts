@@ -1349,5 +1349,54 @@ describe('Game Sessions & Turn Engine (Unit)', () => {
       expect(movedSession.stateVersion).toBe(activeSession.stateVersion + 1);
     });
   });
+
+  describe('Ludo Arena Session Integration', () => {
+    it('creates, joins, and rolls die in a server-authoritative Ludo match', async () => {
+      const { app, p1, p2 } = await setupTestApp();
+
+      // 1. P1 creates a Ludo session
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/game-sessions',
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { gameId: 'ludo' },
+      });
+      expect(createRes.statusCode).toBe(201);
+      const session = createRes.json();
+      expect(session.gameId).toBe('ludo');
+      expect(session.status).toBe('waiting');
+      const publicId = session.publicId;
+
+      // 2. P2 joins the match
+      const joinRes = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/join`,
+        headers: { authorization: `Bearer ${p2.sessionToken}` },
+      });
+      expect(joinRes.statusCode).toBe(200);
+      const activeSession = joinRes.json();
+      expect(activeSession.status).toBe('active');
+      expect(activeSession.currentPlayerId).toBe(p1.user.id);
+      expect(activeSession.state.tokens.red).toHaveLength(4);
+      expect(activeSession.state.turnPhase).toBe('roll');
+
+      // 3. P1 rolls the die
+      const rollRes = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/moves`,
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: {
+          move: { type: 'roll' },
+          expectedStateVersion: activeSession.stateVersion,
+        },
+      });
+      expect(rollRes.statusCode).toBe(200);
+      const rolledSession = rollRes.json();
+      expect(rolledSession.stateVersion).toBe(activeSession.stateVersion + 1);
+      expect(rolledSession.state.history).toHaveLength(1);
+      expect(rolledSession.state.history[0].moveType).toBe('roll');
+    });
+  });
 });
+
 
