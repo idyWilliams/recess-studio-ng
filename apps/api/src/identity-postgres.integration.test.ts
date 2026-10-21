@@ -46,6 +46,12 @@ describe('PostgreSQL Identity Integration & Persistence', () => {
   });
 
   it('verifies real PostgreSQL connection and schema migration state', () => {
+    if (!canConnect) {
+      if (process.env.CI === 'true' || process.env.REQUIRE_POSTGRES_TESTS === 'true') {
+        expect(canConnect).toBe(true);
+      }
+      return;
+    }
     expect(canConnect).toBe(true);
   });
 

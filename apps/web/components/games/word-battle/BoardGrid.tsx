@@ -34,12 +34,22 @@ export function BoardGrid({
   return (
     <section
       aria-label="Word Battle Board"
-      className="mx-auto w-full max-w-xs sm:max-w-sm"
+      className="mx-auto w-full max-w-xs sm:max-w-sm select-none touch-none overscroll-contain"
+      style={{
+        touchAction: 'none',
+        overscrollBehavior: 'contain',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+      }}
     >
       {/* Board frame */}
       <div
-        className="rounded-2xl p-[3px]"
+        className="rounded-2xl p-[3px] select-none touch-none overscroll-contain"
         style={{
+          touchAction: 'none',
+          overscrollBehavior: 'contain',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
           background:
             'linear-gradient(145deg, rgba(108,56,255,0.55) 0%, rgba(27,118,255,0.35) 50%, rgba(108,56,255,0.25) 100%)',
           boxShadow:
@@ -47,13 +57,25 @@ export function BoardGrid({
         }}
       >
         <div
-          className="rounded-[14px] p-3"
+          className="rounded-[14px] p-3 select-none touch-none overscroll-contain"
           style={{
+            touchAction: 'none',
+            overscrollBehavior: 'contain',
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
             background:
               'linear-gradient(160deg, #161D2F 0%, #0D111C 60%, #111828 100%)',
           }}
         >
-          <div className="grid grid-cols-4 gap-2">
+          <div
+            className="grid grid-cols-4 gap-2 select-none touch-none overscroll-contain"
+            style={{
+              touchAction: 'none',
+              overscrollBehavior: 'contain',
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
+            }}
+          >
             {tiles.flatMap((row) =>
               row.map((tile) => {
                 const isSelected = selectedTileIds.includes(tile.id);

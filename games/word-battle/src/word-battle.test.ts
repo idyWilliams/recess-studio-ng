@@ -83,6 +83,42 @@ describe('Word Battle — Game Core (Stage 1 Deterministic Rules)', () => {
       expect(r1).toBeGreaterThanOrEqual(0);
       expect(r1).toBeLessThan(1);
     });
+
+    it('produces 100% identical refilled boards when given identical seed and valid moves', () => {
+      const seed = 54321;
+      const game1 = wordBattleGame.createInitialState(players, { seed });
+      const game2 = wordBattleGame.createInitialState(players, { seed });
+
+      expect(game1.board).toEqual(game2.board);
+      expect(game1.rngStep).toBe(game2.rngStep);
+
+      const move = {
+        word: 'cat',
+        path: [
+          { row: 0, col: 0 },
+          { row: 0, col: 1 },
+          { row: 0, col: 2 },
+        ],
+        isDictionaryValid: true,
+      };
+
+      // Set tiles at path to match 'CAT' for deterministic move acceptance
+      game1.board[0]![0]!.letter = 'C';
+      game1.board[0]![1]!.letter = 'A';
+      game1.board[0]![2]!.letter = 'T';
+      game2.board[0]![0]!.letter = 'C';
+      game2.board[0]![1]!.letter = 'A';
+      game2.board[0]![2]!.letter = 'T';
+
+      const afterMove1 = wordBattleGame.applyMove(game1, move, 'p1');
+      const afterMove2 = wordBattleGame.applyMove(game2, move, 'p1');
+
+      expect(afterMove1.board).toEqual(afterMove2.board);
+      expect(afterMove1.rngStep).toBe(afterMove2.rngStep);
+      expect(afterMove1.boardVersion).toBe(1);
+      expect(afterMove2.boardVersion).toBe(1);
+      expect(afterMove1.lastTransition).toEqual(afterMove2.lastTransition);
+    });
   });
 
   describe('Adjacency and Path Validation', () => {

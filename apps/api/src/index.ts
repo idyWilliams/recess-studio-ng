@@ -1,8 +1,22 @@
+import { createDatabaseClient } from '@recess/database';
 import { loadEnv } from './config/env.js';
+import { assertProductionDatabaseGuard } from './config/database-guard.js';
 import { buildApp } from './app.js';
 import { loadDictionary } from './games/word-validator.js';
 
 const env = loadEnv();
+
+// Fail-fast in production: never start with in-memory fallback if Postgres is down or unconfigured
+await assertProductionDatabaseGuard(env, {
+  verifyConnection: async (databaseUrl: string) => {
+    const { client } = createDatabaseClient(databaseUrl);
+    try {
+      await client`SELECT 1`;
+    } finally {
+      await client.end({ timeout: 5 });
+    }
+  },
+});
 
 // Load the ENABLE1 dictionary into memory before accepting requests.
 // This is a one-time startup cost (~5–20 ms) that eliminates all

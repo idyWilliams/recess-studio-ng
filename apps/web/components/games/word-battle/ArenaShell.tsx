@@ -28,8 +28,12 @@ export function ArenaShell({ status, opponentName, children }: ArenaShellProps) 
      * cannot infer intrinsic size → background-size:cover does nothing).
      */
     <div
-      className="fixed inset-0 z-50 flex flex-col overflow-y-auto text-white"
+      className="fixed inset-0 z-50 flex flex-col overflow-y-auto overscroll-contain text-white min-h-[100dvh] h-[100dvh]"
       style={{
+        height: '100dvh',
+        minHeight: '100dvh',
+        overscrollBehavior: 'contain',
+        WebkitOverflowScrolling: 'touch',
         background: `
           radial-gradient(ellipse 70% 55% at 15% 10%, rgba(108,56,255,0.28) 0%, transparent 70%),
           radial-gradient(ellipse 60% 45% at 88% 18%, rgba(27,118,255,0.22) 0%, transparent 65%),

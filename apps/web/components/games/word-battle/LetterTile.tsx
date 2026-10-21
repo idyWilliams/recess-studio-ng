@@ -50,13 +50,16 @@ export function LetterTile({
     <button
       type="button"
       onClick={onClick}
-      className={`relative flex aspect-square w-full items-center justify-center rounded-xl transition-all duration-150 select-none active:scale-90 ${
+      className={`relative flex aspect-square w-full items-center justify-center rounded-xl transition-all duration-150 select-none touch-none active:scale-90 ${
         isSelected ? 'scale-105' : 'hover:brightness-125'
       }`}
       style={{
         background: bg,
         border,
         boxShadow: glow,
+        touchAction: 'none',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
       }}
       aria-label={`Letter ${letter}, ${letterScore} point${letterScore !== 1 ? 's' : ''}`}
       aria-pressed={isSelected}
