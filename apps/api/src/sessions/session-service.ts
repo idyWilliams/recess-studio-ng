@@ -42,7 +42,10 @@ export class SessionService {
     private now: () => Date = () => new Date(),
   ) {}
 
-  private mapResponse(session: SessionWithPlayers): GameSessionResponse {
+  private mapResponse(
+    session: SessionWithPlayers,
+    viewerUserId?: string | null,
+  ): GameSessionResponse {
     const players: GameSessionPlayer[] = session.players.map((p) => ({
       id: p.id,
       userId: p.userId,
@@ -52,12 +55,27 @@ export class SessionService {
       joinedAt: p.joinedAt,
     }));
 
+    const game = this.gameRegistry.get(session.gameId);
+    let state = session.state;
+    if (
+      game &&
+      typeof (game as { projectPlayerView?: unknown }).projectPlayerView === 'function' &&
+      state !== null &&
+      state !== undefined &&
+      typeof state === 'object'
+    ) {
+      state = (game as { projectPlayerView: (s: unknown, v: string | null) => unknown }).projectPlayerView(
+        state,
+        viewerUserId ?? null,
+      );
+    }
+
     return {
       id: session.id,
       publicId: session.publicId,
       gameId: session.gameId,
       status: session.status as GameSessionStatus,
-      state: session.state,
+      state,
       stateVersion: session.stateVersion,
       currentPlayerId: session.currentPlayerId,
       result: session.result,
@@ -104,7 +122,10 @@ export class SessionService {
     return this.mapResponse(session);
   }
 
-  async getSession(publicId: string): Promise<GameSessionResponse> {
+  async getSession(
+    publicId: string,
+    viewerUserId?: string | null,
+  ): Promise<GameSessionResponse> {
     const session = await this.repo.findSessionByPublicId(publicId);
     if (!session) {
       throw new AppError('GAME_NOT_FOUND', 'Game session not found', 404);
@@ -114,7 +135,7 @@ export class SessionService {
     // background sweeper. Repeated reads after expiry are no-ops (the deadline is consumed).
     const now = this.now();
     const { session: reconciled } = await this.reconcileSessionIfExpired(session, now);
-    return this.mapResponse(reconciled);
+    return this.mapResponse(reconciled, viewerUserId);
   }
 
   async joinSession(
@@ -592,5 +613,117 @@ export class SessionService {
       result,
       nextTurnDeadlineAt,
     });
+  }
+
+  /**
+   * 1-Tap Rematch Handshake (Phase 2):
+   * Provisions or joins a rematch session linked to the same two players.
+   * Seat 0 and first turn are assigned to the loser of the previous match.
+   */
+  async rematch(userId: string, publicId: string): Promise<GameSessionResponse> {
+    const session = await this.repo.findSessionByPublicId(publicId);
+    if (!session) {
+      throw new AppError('GAME_NOT_FOUND', 'Game session not found', 404);
+    }
+
+    const caller = session.players.find((p) => p.userId === userId);
+    if (!caller) {
+      throw new AppError(
+        'PLAYER_NOT_IN_GAME',
+        'Only match participants can request a rematch',
+        403,
+      );
+    }
+
+    if (session.status !== 'completed') {
+      throw new AppError(
+        'GAME_NOT_ACTIVE',
+        'Cannot rematch while game is active',
+        400,
+      );
+    }
+
+    if (session.players.length !== 2) {
+      throw new AppError(
+        'INVALID_INPUT',
+        'Rematch requires exactly 2 players',
+        400,
+      );
+    }
+
+    // Handshake check: if a rematch was already created for this match, return it
+    const existingResult = (session.result ?? {}) as Record<string, unknown>;
+    if (typeof existingResult.rematchPublicId === 'string') {
+      return this.getSession(existingResult.rematchPublicId, userId);
+    }
+
+    // Determine seat assignment: Loser gets first turn (seat 0)
+    const [p0, p1] = session.players;
+    const winnerId = (existingResult as { winnerId?: string | null }).winnerId;
+    let firstPlayer = p0!;
+    let secondPlayer = p1!;
+
+    if (winnerId && winnerId === p0!.userId) {
+      // p0 won, so p1 (the loser) gets first turn
+      firstPlayer = p1!;
+      secondPlayer = p0!;
+    } else if (winnerId && winnerId === p1!.userId) {
+      // p1 won, so p0 (the loser) gets first turn
+      firstPlayer = p0!;
+      secondPlayer = p1!;
+    } else {
+      // Draw / no single winner: swap seats so players alternate starting
+      firstPlayer = p1!;
+      secondPlayer = p0!;
+    }
+
+    const game = this.gameRegistry.get(session.gameId);
+    if (!game) {
+      throw new AppError('GAME_NOT_FOUND', `Game '${session.gameId}' not found`, 404);
+    }
+
+    const rematchPublicId = crypto.randomBytes(6).toString('hex');
+    const gamePlayers = [
+      { id: firstPlayer.userId, displayName: firstPlayer.username },
+      { id: secondPlayer.userId, displayName: secondPlayer.username },
+    ];
+    const initialState = game.createInitialState(gamePlayers);
+    const initialPlayerId = game.getNextPlayer(initialState) ?? firstPlayer.userId;
+    const turnDeadlineAt = new Date(this.now().getTime() + TURN_DURATION_MS);
+
+    // 1. Create rematch session with loser in seat 0
+    const newSession = await this.repo.createSession({
+      publicId: rematchPublicId,
+      gameId: session.gameId,
+      status: 'waiting',
+      state: {},
+      stateVersion: 0,
+      currentPlayerId: null,
+      creatorUserId: firstPlayer.userId,
+      creatorSeat: '0',
+      creatorUsername: firstPlayer.username,
+    });
+
+    // 2. Add second player in seat 1
+    await this.repo.addPlayer(
+      newSession.id,
+      secondPlayer.userId,
+      '1',
+      secondPlayer.username,
+    );
+
+    // 3. Mark session active with turn deadline
+    await this.repo.startSession(
+      newSession.id,
+      initialState,
+      initialPlayerId,
+      turnDeadlineAt,
+    );
+
+    // 4. Record rematchPublicId on original session so second player is routed seamlessly
+    const updatedResult = { ...existingResult, rematchPublicId };
+    await this.repo.updateSessionResult(session.id, updatedResult);
+
+    return this.getSession(rematchPublicId, userId);
   }
 }

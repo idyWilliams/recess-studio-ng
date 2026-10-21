@@ -1,5 +1,6 @@
 import type { MatchStatusState, MatchupPlayer } from '@recess/ui';
 import type {
+  BoardCoordinate,
   WordBattlePenaltyReason,
   WordBattleResult,
   WordBattleState,
@@ -252,4 +253,83 @@ export function parseMatchCode(input: string): string | null {
   const fromUrl = trimmed.match(/\/games\/word-battle\/([0-9a-fA-F]{12})\/?$/);
   const candidate = fromUrl?.[1] ?? trimmed;
   return /^[0-9a-fA-F]{12}$/.test(candidate) ? candidate.toLowerCase() : null;
+}
+
+export interface OpponentMoveView {
+  word: string;
+  score: number;
+  penalty: WordBattlePenaltyReason | null;
+  path?: BoardCoordinate[] | undefined;
+}
+
+/**
+ * Returns the opponent's last completed move if the most recent turn in the history
+ * was played by someone other than the current viewer.
+ */
+export function getOpponentLastMove(
+  response: WordBattleSession,
+  myUserId: string | null,
+): OpponentMoveView | null {
+  if (myUserId === null) return null;
+  const state = response.state;
+  if (!state || !state.history || state.history.length === 0) return null;
+  const last = state.history[state.history.length - 1];
+  if (!last || last.playerId === myUserId) return null;
+
+  return {
+    word: last.word,
+    score: last.score,
+    penalty: last.penalty ?? null,
+    path: last.path,
+  };
+}
+
+/**
+ * Formats visual banner feedback informing the active player what the opponent just played.
+ */
+export function getOpponentMoveFeedback(
+  opponentMove: OpponentMoveView,
+  opponentName: string = 'Opponent',
+): MoveFeedback {
+  if (opponentMove.penalty) {
+    if (opponentMove.penalty === 'TIMEOUT') {
+      return {
+        type: 'info',
+        message: `${opponentName} ran out of time! −1 life`,
+      };
+    }
+    const wordPrefix = opponentMove.word ? `"${opponentMove.word}" — ` : '';
+    return {
+      type: 'info',
+      message: `${opponentName} played ${wordPrefix}${PENALTY_MESSAGES[opponentMove.penalty]}`,
+    };
+  }
+
+  return {
+    type: 'info',
+    message: `${opponentName} played "${opponentMove.word}"! +${opponentMove.score} pts`,
+  };
+}
+
+/**
+ * Resolves the tile IDs that should be highlighted on the board to visualize the
+ * opponent's last move. Prioritizes the newly spawned replacement tiles on the board,
+ * or the path coordinates if tiles were not replaced (e.g. penalty or replay).
+ */
+export function getOpponentMoveTileIds(
+  state: WordBattleState,
+  opponentMove: OpponentMoveView,
+): string[] {
+  if (state.lastTransition?.spawnedTiles && state.lastTransition.spawnedTiles.length > 0) {
+    return state.lastTransition.spawnedTiles.map((t) => t.id);
+  }
+  if (opponentMove.path && opponentMove.path.length > 0) {
+    const ids: string[] = [];
+    for (const coord of opponentMove.path) {
+      const tile = state.board[coord.row]?.[coord.col];
+      if (tile) ids.push(tile.id);
+    }
+    return ids;
+  }
+  return [];
 }

@@ -11,6 +11,9 @@ import {
   getMatchStatus,
   getMatchupPair,
   getMoveFeedback,
+  getOpponentLastMove,
+  getOpponentMoveFeedback,
+  getOpponentMoveTileIds,
   getPenaltyLabel,
   getRemainingMs,
   getRoundInfo,
@@ -378,3 +381,109 @@ describe('parseMatchCode', () => {
     expect(parseMatchCode('aabbccddeeffg')).toBeNull();
   });
 });
+
+describe('getOpponentLastMove', () => {
+  it('returns null if viewer is null or history is empty', () => {
+    const session = makeSession({
+      state: makeState({ history: [] }),
+    });
+    expect(getOpponentLastMove(session, null)).toBeNull();
+    expect(getOpponentLastMove(session, P1)).toBeNull();
+  });
+
+  it('returns null if the last move was played by the viewer', () => {
+    const session = makeSession({
+      state: makeState({
+        history: [{ playerId: P1, word: 'cats', score: 4 }],
+      }),
+    });
+    expect(getOpponentLastMove(session, P1)).toBeNull();
+  });
+
+  it('returns opponent move details if the last move was played by opponent', () => {
+    const path = [{ row: 0, col: 0 }, { row: 0, col: 1 }];
+    const session = makeSession({
+      state: makeState({
+        history: [
+          { playerId: P1, word: 'cats', score: 4 },
+          { playerId: P2, word: 'dog', score: 3, path },
+        ],
+      }),
+    });
+    expect(getOpponentLastMove(session, P1)).toEqual({
+      word: 'dog',
+      score: 3,
+      penalty: null,
+      path,
+    });
+  });
+});
+
+describe('getOpponentMoveFeedback', () => {
+  it('formats feedback for an accepted opponent word', () => {
+    const feedback = getOpponentMoveFeedback(
+      { word: 'cats', score: 4, penalty: null },
+      'Grace',
+    );
+    expect(feedback).toEqual({
+      type: 'info',
+      message: 'Grace played "cats"! +4 pts',
+    });
+  });
+
+  it('formats feedback for an opponent word with penalty', () => {
+    const feedback = getOpponentMoveFeedback(
+      { word: 'xyz', score: 0, penalty: 'INVALID_DICTIONARY' },
+      'Grace',
+    );
+    expect(feedback).toEqual({
+      type: 'info',
+      message: 'Grace played "xyz" — Not in the dictionary. −1 life',
+    });
+  });
+
+  it('formats feedback for an opponent timeout', () => {
+    const feedback = getOpponentMoveFeedback(
+      { word: '', score: 0, penalty: 'TIMEOUT' },
+      'Grace',
+    );
+    expect(feedback).toEqual({
+      type: 'info',
+      message: 'Grace ran out of time! −1 life',
+    });
+  });
+});
+
+describe('getOpponentMoveTileIds', () => {
+  it('returns spawned tiles from state.lastTransition if available', () => {
+    const spawnedTiles = [makeTile('X', 0, 0), makeTile('Y', 0, 1)];
+    const state = makeState({
+      lastTransition: {
+        consumedTileIds: ['t_r3_c0', 't_r3_c1'],
+        cascadedTiles: [],
+        spawnedTiles,
+      },
+    });
+    const move = { word: 'hi', score: 2, penalty: null };
+    expect(getOpponentMoveTileIds(state, move)).toEqual([spawnedTiles[0]!.id, spawnedTiles[1]!.id]);
+  });
+
+  it('falls back to path coordinates on current board if no spawnedTiles', () => {
+    const board = makeBoard();
+    const state = makeState({ board, lastTransition: undefined });
+    const move = {
+      word: 'ca',
+      score: 0,
+      penalty: 'TOO_SHORT' as const,
+      path: [{ row: 0, col: 0 }, { row: 0, col: 1 }],
+    };
+    expect(getOpponentMoveTileIds(state, move)).toEqual([board[0]![0]!.id, board[0]![1]!.id]);
+  });
+
+  it('returns empty array if no spawnedTiles and no path', () => {
+    const state = makeState({ lastTransition: undefined });
+    const move = { word: '', score: 0, penalty: 'TIMEOUT' as const };
+    expect(getOpponentMoveTileIds(state, move)).toEqual([]);
+  });
+});
+

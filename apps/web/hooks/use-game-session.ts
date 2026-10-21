@@ -7,6 +7,7 @@ import {
   createWordBattleSession,
   fetchGameSession,
   joinGameSession,
+  requestRematch,
   requestTurnExpiry,
   submitGameMove,
   type WordBattleSession,
@@ -43,10 +44,16 @@ export function useGameSession(publicId: string) {
     queryKey: gameSessionQueryKey(publicId),
     queryFn: () => fetchGameSession(publicId),
     refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      return status === 'waiting' || status === 'active'
-        ? LIVE_POLL_INTERVAL_MS
-        : false;
+      const data = query.state.data;
+      if (!data) return false;
+      const status = data.status;
+      if (status === 'waiting' || status === 'active') {
+        return LIVE_POLL_INTERVAL_MS;
+      }
+      if (status === 'completed' && !data.result?.rematchPublicId) {
+        return LIVE_POLL_INTERVAL_MS;
+      }
+      return false;
     },
     // Async duels: keep converging even when the tab is backgrounded.
     refetchIntervalInBackground: true,
@@ -89,12 +96,33 @@ export function useGameSession(publicId: string) {
     },
   });
 
+  const rematch = useMutation({
+    mutationFn: (sessionToken: string) => requestRematch(sessionToken, publicId),
+    onSuccess: (newSession) => {
+      queryClient.setQueryData(gameSessionQueryKey(newSession.publicId), newSession);
+      queryClient.setQueryData(
+        gameSessionQueryKey(publicId),
+        (old: WordBattleSession | undefined) => {
+          if (!old || !old.result) return old;
+          return {
+            ...old,
+            result: {
+              ...old.result,
+              rematchPublicId: newSession.publicId,
+            },
+          };
+        },
+      );
+    },
+  });
+
   return {
     session: (sessionQuery.data ?? null) as WordBattleSession | null,
     sessionQuery,
     joinSession,
     submitMove,
     expireTurn,
+    rematch,
     refreshSession: sessionQuery.refetch,
   };
 }

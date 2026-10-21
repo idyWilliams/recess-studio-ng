@@ -26,7 +26,10 @@ const takeTurnGame: GameDefinition<TakeTurnState, TakeTurnMove, TakeTurnResult> 
   minPlayers: 2,
   maxPlayers: 2,
 
-  createInitialState(players) {
+  createInitialState(contextOrPlayers) {
+    const players = Array.isArray(contextOrPlayers)
+      ? contextOrPlayers
+      : contextOrPlayers.players;
     if (players.length !== 2) {
       throw new Error('Take Turn Demo requires exactly two players');
     }
@@ -137,5 +140,45 @@ describe('GameDefinition contract', () => {
     if (!validation.ok) {
       expect(validation.reason).toBe('NOT_YOUR_TURN');
     }
+  });
+
+  it('supports cartridge metadata and projectPlayerView security projection', () => {
+    interface SecretState {
+      players: GamePlayer[];
+      secretSeed: number;
+      board: string[];
+    }
+
+    const cartridge: GameDefinition<SecretState> = {
+      id: 'cartridge-test',
+      gameId: 'cartridge-test',
+      name: 'Cartridge Test',
+      version: '1.0.0',
+      metadata: { category: 'strategy' },
+      minPlayers: 2,
+      maxPlayers: 2,
+      createInitialState: (ctx) => {
+        const p = Array.isArray(ctx) ? ctx : ctx.players;
+        return { players: p, secretSeed: 9999, board: ['A', 'B'] };
+      },
+      validateMove: () => ({ ok: true }),
+      applyMove: (s) => s,
+      getNextPlayer: () => null,
+      isGameOver: () => false,
+      getResult: () => null,
+      projectPlayerView: (state) => {
+        const { secretSeed, ...publicView } = state;
+        return publicView;
+      },
+    };
+
+    expect(cartridge.id).toBe('cartridge-test');
+    expect(cartridge.metadata?.category).toBe('strategy');
+    const fullState = cartridge.createInitialState(players);
+    expect(fullState.secretSeed).toBe(9999);
+
+    const projected = cartridge.projectPlayerView!(fullState, 'p1') as Record<string, unknown>;
+    expect(projected.secretSeed).toBeUndefined();
+    expect(projected.board).toEqual(['A', 'B']);
   });
 });

@@ -102,4 +102,14 @@ export function registerSessionRoutes(
 
     return sessionService.expireTurn(auth.user.id, publicId, expectedStateVersion);
   });
+
+  // POST /game-sessions/:publicId/rematch — 1-Tap Rematch Handshake (Phase 2)
+  app.post<{ Params: { publicId: string } }>(
+    '/game-sessions/:publicId/rematch',
+    async (request) => {
+      const auth = await authenticateRequest(request, identityService);
+      const { publicId } = request.params;
+      return sessionService.rematch(auth.user.id, publicId);
+    },
+  );
 }

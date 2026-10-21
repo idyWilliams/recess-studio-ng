@@ -22,6 +22,8 @@ interface BoardGridProps {
   selectedTileIds: string[];
   /** Server-confirmed outcome flash for the tiles involved in the last submission. */
   flash: 'valid' | 'invalid' | null;
+  /** Tile IDs involved in the opponent's last move path for visual replay highlighting. */
+  opponentTileIds?: string[] | undefined;
   onTileClick: (tile: BoardTile) => void;
 }
 
@@ -29,6 +31,7 @@ export function BoardGrid({
   tiles,
   selectedTileIds,
   flash,
+  opponentTileIds,
   onTileClick,
 }: BoardGridProps) {
   return (
@@ -92,6 +95,7 @@ export function BoardGrid({
                     isSelected={isSelected}
                     isValid={isSelected && flash === 'valid'}
                     isInvalid={isSelected && flash === 'invalid'}
+                    isOpponentMove={!isSelected && (opponentTileIds?.includes(tile.id) ?? false)}
                     orderNumber={orderNumber}
                     onClick={() => onTileClick(tile)}
                   />

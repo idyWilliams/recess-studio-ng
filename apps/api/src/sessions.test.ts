@@ -725,28 +725,29 @@ describe('Game Sessions & Turn Engine (Unit)', () => {
     });
   });
 
-  describe('Authoritative turn deadlines & timeout processing (Stage 2)', () => {
-    const start = new Date('2026-06-01T09:00:00.000Z');
+  const start = new Date('2026-06-01T09:00:00.000Z');
 
-    async function startWordBattle(
-      app: FastifyInstance,
-      p1: { sessionToken: string },
-      p2: { sessionToken: string },
-    ) {
-      const createRes = await app.inject({
-        method: 'POST',
-        url: '/game-sessions',
-        headers: { authorization: `Bearer ${p1.sessionToken}` },
-        payload: { gameId: 'word-battle' },
-      });
-      const { publicId } = createRes.json();
-      const joinRes = await app.inject({
-        method: 'POST',
-        url: `/game-sessions/${publicId}/join`,
-        headers: { authorization: `Bearer ${p2.sessionToken}` },
-      });
-      return { publicId, joined: joinRes.json() };
-    }
+  async function startWordBattle(
+    app: FastifyInstance,
+    p1: { sessionToken: string },
+    p2: { sessionToken: string },
+  ) {
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/game-sessions',
+      headers: { authorization: `Bearer ${p1.sessionToken}` },
+      payload: { gameId: 'word-battle' },
+    });
+    const { publicId } = createRes.json();
+    const joinRes = await app.inject({
+      method: 'POST',
+      url: `/game-sessions/${publicId}/join`,
+      headers: { authorization: `Bearer ${p2.sessionToken}` },
+    });
+    return { publicId, joined: joinRes.json() };
+  }
+
+  describe('Authoritative turn deadlines & timeout processing (Stage 2)', () => {
 
     it('word-battle sessions receive a server deadline on start; games without timeout support never do', async () => {
       const clock = createTestClock(start);
@@ -1146,6 +1147,112 @@ describe('Game Sessions & Turn Engine (Unit)', () => {
         scanned: 0,
         reconciled: 0,
       });
+    });
+  });
+
+  describe('Phase 2: Fog-of-War Security & 1-Tap Rematch Handshake', () => {
+    it('strips internal rngSeed from public session state view (Fog-of-War)', async () => {
+      const { app, p1, p2 } = await setupTestApp();
+      const { publicId } = await startWordBattle(app, p1, p2);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/game-sessions/${publicId}`,
+      });
+
+      expect(res.statusCode).toBe(200);
+      const data = res.json();
+      expect(data.state).toBeDefined();
+      expect(data.state.board).toBeDefined();
+      expect(data.state.rngSeed).toBeUndefined();
+    });
+
+    it('provisions 1-tap rematch with loser taking first turn and links both players', async () => {
+      const clock = createTestClock(start);
+      const { app, p1, p2 } = await setupTestApp(undefined, clock.now);
+      const { publicId } = await startWordBattle(app, p1, p2);
+
+      // Knockout P1: P1 times out 3 times (P2 times out twice)
+      for (let i = 0; i < 5; i += 1) {
+        clock.advance(TURN_DURATION_MS);
+        const active = i % 2 === 0 ? p1 : p2;
+        await app.inject({
+          method: 'POST',
+          url: `/game-sessions/${publicId}/expire-turn`,
+          headers: { authorization: `Bearer ${active.sessionToken}` },
+          payload: { expectedStateVersion: i },
+        });
+      }
+
+      // Verify original game ended with P2 as winner and P1 as loser
+      const completed = await app.inject({
+        method: 'GET',
+        url: `/game-sessions/${publicId}`,
+      });
+      expect(completed.json().status).toBe('completed');
+      expect(completed.json().result.winnerId).toBe(p2.user.id);
+
+      // 1. P2 (the winner) requests a rematch
+      const rematchRes1 = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/rematch`,
+        headers: { authorization: `Bearer ${p2.sessionToken}` },
+      });
+
+      expect(rematchRes1.statusCode).toBe(200);
+      const rematchSession1 = rematchRes1.json();
+      expect(rematchSession1.status).toBe('active');
+      expect(rematchSession1.publicId).not.toBe(publicId);
+
+      // Loser (P1) is assigned seat 0 and first turn!
+      expect(rematchSession1.currentPlayerId).toBe(p1.user.id);
+      expect(rematchSession1.players[0].userId).toBe(p1.user.id);
+      expect(rematchSession1.players[1].userId).toBe(p2.user.id);
+      expect(rematchSession1.turnDeadlineAt).not.toBeNull();
+
+      // 2. Original session now has rematchPublicId attached to its result
+      const originalRefreshed = await app.inject({
+        method: 'GET',
+        url: `/game-sessions/${publicId}`,
+      });
+      expect(originalRefreshed.json().result.rematchPublicId).toBe(rematchSession1.publicId);
+
+      // 3. P1 (the loser) requests rematch or polls: receives the EXACT same provisioned match
+      const rematchRes2 = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/rematch`,
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+      });
+      expect(rematchRes2.statusCode).toBe(200);
+      expect(rematchRes2.json().publicId).toBe(rematchSession1.publicId);
+    });
+
+    it('rejects rematch if session is not completed or user is not a participant', async () => {
+      const { app, p1, p2 } = await setupTestApp();
+      const { publicId } = await startWordBattle(app, p1, p2);
+
+      // Active match rejection
+      const activeReject = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/rematch`,
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+      });
+      expect(activeReject.statusCode).toBe(400);
+
+      // Non-participant rejection
+      const nonParticipantRes = await app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: { username: 'SpectatorUser' },
+      });
+      const nonParticipant = nonParticipantRes.json();
+
+      const spectatorReject = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/rematch`,
+        headers: { authorization: `Bearer ${nonParticipant.sessionToken}` },
+      });
+      expect(spectatorReject.statusCode).toBe(403);
     });
   });
 });

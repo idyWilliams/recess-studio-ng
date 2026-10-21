@@ -11,10 +11,18 @@ interface ResultOverlayProps {
   result: WordBattleResult;
   players: SessionPlayerView[];
   myUserId: string | null;
+  onRematch?: (() => void) | undefined;
+  isRematching?: boolean | undefined;
 }
 
 /** Final match result rendered only from the server-confirmed `result` payload. */
-export function ResultOverlay({ result, players, myUserId }: ResultOverlayProps) {
+export function ResultOverlay({
+  result,
+  players,
+  myUserId,
+  onRematch,
+  isRematching = false,
+}: ResultOverlayProps) {
   const isDraw = result.isDraw;
   const winner = players.find((player) => player.userId === result.winnerId);
   const loser = players.find((player) => player.userId !== result.winnerId);
@@ -113,11 +121,24 @@ export function ResultOverlay({ result, players, myUserId }: ResultOverlayProps)
         )}
 
         <div className="mt-5 flex flex-col gap-2">
-          <Link href="/games/word-battle" className="block">
-            <Button variant="primary" size="lg" fullWidth>
-              Play Again
+          {onRematch ? (
+            <Button
+              variant="primary"
+              size="lg"
+              fullWidth
+              isLoading={isRematching || Boolean(result.rematchPublicId)}
+              disabled={isRematching || Boolean(result.rematchPublicId)}
+              onClick={onRematch}
+            >
+              {result.rematchPublicId ? 'Joining Rematch…' : '1-Tap Rematch'}
             </Button>
-          </Link>
+          ) : (
+            <Link href="/games/word-battle" className="block">
+              <Button variant="primary" size="lg" fullWidth>
+                Play Again
+              </Button>
+            </Link>
+          )}
           <Link
             href="/games"
             className="text-xs font-semibold text-neutral-400 hover:text-white transition-colors"

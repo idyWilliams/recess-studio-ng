@@ -84,8 +84,8 @@ export interface WordBattleState {
   history: WordBattleTurnHistory[];
   /** Last board transition delta for client animation and reconnect reconciliation. */
   lastTransition?: BoardTransitionDelta | undefined;
-  /** Seed used for deterministic PRNG. */
-  rngSeed: number;
+  /** Seed used for deterministic PRNG (stripped from client-projected state views for fog-of-war security). */
+  rngSeed?: number | undefined;
   /** Current step counter in the deterministic PRNG sequence. */
   rngStep: number;
 }
@@ -120,4 +120,6 @@ export interface WordBattleResult {
   isDraw: boolean;
   /** Whether the game ended via knockout (opponent losing all lives). */
   isKnockout: boolean;
+  /** Public id of the 1-tap rematch session if one has been provisioned. */
+  rematchPublicId?: string | null | undefined;
 }

@@ -812,4 +812,45 @@ describe('Word Battle — Game Core (Stage 1 Deterministic Rules)', () => {
       expectIllegalPathPenalty(next, tooLong);
     });
   });
+
+  describe('Universal Cartridge Contract & Security Projection (Phase 2)', () => {
+    it('declares valid cartridge id, metadata, and version', () => {
+      expect(wordBattleGame.id).toBe('word-battle');
+      expect(wordBattleGame.gameId).toBe('word-battle');
+      expect(wordBattleGame.version).toBe('1.0.0');
+      expect(wordBattleGame.metadata?.category).toBe('word-duel');
+      expect(wordBattleGame.metadata?.turnDurationMs).toBe(15_000);
+    });
+
+    it('initializes state using GameInitContext object', () => {
+      const state = wordBattleGame.createInitialState({
+        players,
+        seed: 777,
+      });
+      expect(state.players).toEqual(players);
+      expect(state.rngSeed).toBe(777);
+      expect(state.board.length).toBe(4);
+    });
+
+    it('applies timeout via applyTimeout method', () => {
+      const state = wordBattleGame.createInitialState(players, { seed: 100 });
+      expect(state.lives['p1']).toBe(3);
+
+      const next = wordBattleGame.applyTimeout(state, 'p1');
+      expect(next.lives['p1']).toBe(2);
+      expect(next.currentPlayerId).toBe('p2');
+      expect(next.history[0]?.penalty).toBe('TIMEOUT');
+    });
+
+    it('projectPlayerView strips secret PRNG seed from client view', () => {
+      const state = wordBattleGame.createInitialState(players, { seed: 12345 });
+      expect(state.rngSeed).toBe(12345);
+
+      const projected = wordBattleGame.projectPlayerView!(state, 'p1') as WordBattleState;
+      expect(projected.rngSeed).toBeUndefined();
+      expect(projected.board).toEqual(state.board);
+      expect(projected.scores).toEqual(state.scores);
+      expect(projected.lives).toEqual(state.lives);
+    });
+  });
 });

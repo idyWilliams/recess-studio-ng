@@ -212,3 +212,23 @@ export async function requestTurnExpiry(
     throw toApiClientError(error);
   }
 }
+
+/**
+ * POST /game-sessions/:publicId/rematch — 1-Tap Rematch Handshake (Phase 2).
+ * Provisions a fresh match linked to the same two players with the loser taking first turn.
+ */
+export async function requestRematch(
+  sessionToken: string,
+  publicId: string,
+): Promise<WordBattleSession> {
+  try {
+    const { data } = await api.post<WordBattleSession>(
+      `/game-sessions/${publicId}/rematch`,
+      {},
+      authConfig(sessionToken),
+    );
+    return data;
+  } catch (error) {
+    throw toApiClientError(error);
+  }
+}

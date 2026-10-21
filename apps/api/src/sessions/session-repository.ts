@@ -106,6 +106,9 @@ export interface SessionRepository {
    * deadline (null) are never returned.
    */
   findExpiredActiveSessions(now: Date, limit: number): Promise<string[]>;
+
+  /** Updates the final session result payload (e.g. attaching rematch publicId). */
+  updateSessionResult(sessionId: string, result: unknown): Promise<void>;
 }
 
 type DbOrTx = Database | Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -409,6 +412,13 @@ export class PostgresSessionRepository implements SessionRepository {
 
     return rows.map((row) => row.id);
   }
+
+  async updateSessionResult(sessionId: string, result: unknown): Promise<void> {
+    await this.db
+      .update(gameSessions)
+      .set({ result, updatedAt: new Date() })
+      .where(eq(gameSessions.id, sessionId));
+  }
 }
 
 export class InMemorySessionRepository implements SessionRepository {
@@ -584,5 +594,13 @@ export class InMemorySessionRepository implements SessionRepository {
     );
     expired.sort((a, b) => Date.parse(a.turnDeadlineAt) - Date.parse(b.turnDeadlineAt));
     return expired.slice(0, limit).map((s) => s.id);
+  }
+
+  async updateSessionResult(sessionId: string, result: unknown): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      session.result = result;
+      session.updatedAt = new Date().toISOString();
+    }
   }
 }

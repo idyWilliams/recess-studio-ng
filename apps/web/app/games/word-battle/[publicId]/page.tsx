@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 
 import { Button, PvPMatchup } from '@recess/ui';
 import type { BoardTile } from '@recess/game-word-battle';
@@ -13,6 +13,9 @@ import {
   getMatchStatus,
   getMatchupPair,
   getMoveFeedback,
+  getOpponentLastMove,
+  getOpponentMoveFeedback,
+  getOpponentMoveTileIds,
   getRoundInfo,
   getSessionPlayers,
   getWordBattleState,
@@ -40,6 +43,7 @@ import { RegisterCard } from '@/components/identity/RegisterCard';
  * decides whether a turn has expired (ADR-007).
  */
 export default function WordBattleArenaPage() {
+  const router = useRouter();
   const params = useParams<{ publicId: string }>();
   const publicId = typeof params.publicId === 'string' ? params.publicId : '';
 
@@ -50,10 +54,12 @@ export default function WordBattleArenaPage() {
     joinSession,
     submitMove,
     expireTurn,
+    rematch,
     refreshSession,
   } = useGameSession(publicId);
 
   const [selectedTileIds, setSelectedTileIds] = useState<string[]>([]);
+  const [opponentTileIds, setOpponentTileIds] = useState<string[]>([]);
   const [feedback, setFeedback] = useState<MoveFeedback | null>(null);
   const [flash, setFlash] = useState<'valid' | 'invalid' | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
@@ -116,6 +122,41 @@ export default function WordBattleArenaPage() {
     setSelectedTileIds([]);
   }, [stateVersion, hasFlash]);
 
+  // ── Opponent move feedback & replay highlight ───────────────────────────
+  // When the session state advances (stateVersion increments) due to an opponent's turn,
+  // highlight the affected tiles and display a feedback banner before the player's turn.
+  const lastObservedVersionRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!session || !state || myUserId === null) return;
+    const currentVersion = session.stateVersion;
+    const previousVersion = lastObservedVersionRef.current;
+    lastObservedVersionRef.current = currentVersion;
+
+    if (previousVersion !== null && currentVersion > previousVersion) {
+      const opponentMove = getOpponentLastMove(session, myUserId);
+      if (opponentMove) {
+        const tileIds = getOpponentMoveTileIds(state, opponentMove);
+        setOpponentTileIds(tileIds);
+        setFeedback(getOpponentMoveFeedback(opponentMove, opponentName));
+
+        const timerId = window.setTimeout(() => {
+          setOpponentTileIds([]);
+        }, 2500);
+        return () => window.clearTimeout(timerId);
+      }
+    }
+  }, [session, state, myUserId, opponentName]);
+
+  // ── Rematch redirect loop ───────────────────────────────────────────────
+  // When a rematch session has been provisioned (either initiated by this player or the opponent),
+  // automatically redirect both players to the new arena without manual re-invites.
+  const rematchPublicId = session?.result?.rematchPublicId;
+  useEffect(() => {
+    if (rematchPublicId) {
+      router.push(`/games/word-battle/${rematchPublicId}`);
+    }
+  }, [rematchPublicId, router]);
+
   // ── Turn expiry request (display-only countdown → server-verified call) ─
   // Fired at most once per observed state version; the server rejects premature or
   // already-handled requests (409 TURN_NOT_EXPIRED / STALE_GAME_STATE), which the
@@ -137,6 +178,9 @@ export default function WordBattleArenaPage() {
   const handleTileClick = useCallback(
     (tile: BoardTile) => {
       if (!myTurn || submitMove.isPending) return;
+      if (opponentTileIds.length > 0) {
+        setOpponentTileIds([]);
+      }
       setSelectedTileIds((previous) => {
         // Tap the last tile again = undo it.
         if (previous[previous.length - 1] === tile.id) {
@@ -146,13 +190,22 @@ export default function WordBattleArenaPage() {
       });
       setFeedback(null);
     },
-    [myTurn, submitMove.isPending],
+    [myTurn, submitMove.isPending, opponentTileIds.length],
   );
 
   const handleClear = useCallback(() => {
     setSelectedTileIds([]);
     setFeedback(null);
   }, []);
+
+  const handleRematch = useCallback(() => {
+    if (!sessionToken || rematch.isPending) return;
+    rematch.mutate(sessionToken, {
+      onSuccess: (newSession) => {
+        router.push(`/games/word-battle/${newSession.publicId}`);
+      },
+    });
+  }, [sessionToken, rematch, router]);
 
   const handleMoveError = useCallback(
     (error: unknown, submittedVersion: number) => {
@@ -426,6 +479,7 @@ export default function WordBattleArenaPage() {
             tiles={state.board}
             selectedTileIds={selectedTileIds}
             flash={flash}
+            opponentTileIds={opponentTileIds}
             onTileClick={handleTileClick}
           />
 
@@ -462,6 +516,8 @@ export default function WordBattleArenaPage() {
               result={session.result}
               players={players}
               myUserId={myUserId}
+              onRematch={isParticipant ? handleRematch : undefined}
+              isRematching={rematch.isPending}
             />
           )}
         </>

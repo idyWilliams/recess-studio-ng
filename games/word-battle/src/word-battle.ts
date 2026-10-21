@@ -473,21 +473,39 @@ export interface InitialStateOptions {
 export interface WordBattleGame
   extends GameDefinition<WordBattleState, WordBattleMove, WordBattleResult> {
   createInitialState(
-    players: GamePlayer[],
+    contextOrPlayers: GamePlayer[] | { players: GamePlayer[]; seed?: number | undefined },
     options?: InitialStateOptions,
+  ): WordBattleState;
+  applyTimeout(
+    state: WordBattleState,
+    expiredPlayerId: string,
+  ): WordBattleState;
+  projectPlayerView(
+    state: WordBattleState,
+    viewerPlayerId: string | null,
   ): WordBattleState;
 }
 
 export const wordBattleGame: WordBattleGame = {
   id: 'word-battle',
+  gameId: 'word-battle',
   name: 'Word Battle',
+  version: '1.0.0',
+  metadata: {
+    category: 'word-duel',
+    turnDurationMs: 15_000,
+    description: 'Server-authoritative 2-player competitive word battle with cascading grid mechanics',
+  },
   minPlayers: 2,
   maxPlayers: 2,
 
   createInitialState(
-    players: GamePlayer[],
+    contextOrPlayers: GamePlayer[] | { players: GamePlayer[]; seed?: number | undefined },
     options?: InitialStateOptions,
   ): WordBattleState {
+    const players = Array.isArray(contextOrPlayers)
+      ? contextOrPlayers
+      : contextOrPlayers.players;
     if (players.length !== 2) {
       throw new Error('Word Battle requires exactly 2 players');
     }
@@ -496,7 +514,10 @@ export const wordBattleGame: WordBattleGame = {
       throw new Error('Invalid players');
     }
 
-    const rngSeed = options?.seed ?? (Date.now() & 0x7fffffff);
+    const rngSeed =
+      options?.seed ??
+      (!Array.isArray(contextOrPlayers) ? contextOrPlayers.seed : undefined) ??
+      (Date.now() & 0x7fffffff);
     const { board, nextStep } = generateBoardTiles(rngSeed, 0, 0);
 
     return {
@@ -580,7 +601,7 @@ export const wordBattleGame: WordBattleGame = {
         state.board,
         evalResult.resolvedPath,
         nextBoardVersion,
-        state.rngSeed,
+        state.rngSeed ?? 0,
         state.rngStep,
       );
       nextBoard = cascadeResult.newBoard;
@@ -724,5 +745,21 @@ export const wordBattleGame: WordBattleGame = {
       isDraw: true,
       isKnockout: false,
     };
+  },
+
+  applyTimeout(
+    state: WordBattleState,
+    expiredPlayerId: string,
+  ): WordBattleState {
+    return this.applyMove(state, { type: 'timeout' }, expiredPlayerId);
+  },
+
+  projectPlayerView(
+    state: WordBattleState,
+    _viewerPlayerId: string | null,
+  ): WordBattleState {
+    // Fog-of-war security: Strip unrevealed PRNG seed so clients cannot predict upcoming refills
+    const { rngSeed, ...sanitized } = state;
+    return sanitized;
   },
 };
