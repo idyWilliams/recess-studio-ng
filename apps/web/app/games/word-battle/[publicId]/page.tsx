@@ -22,6 +22,11 @@ import {
   isCountdownCritical,
   type MoveFeedback,
 } from '@/lib/word-battle-view';
+import {
+  formatWhatsAppInviteUrl,
+  formatWhatsAppNudgeUrl,
+  formatWhatsAppResultUrl,
+} from '@/lib/whatsapp';
 import { useCountdownRemainingMs } from '@/hooks/use-countdown';
 import { useGameSession } from '@/hooks/use-game-session';
 import { useIdentity } from '@/hooks/use-identity';
@@ -207,6 +212,44 @@ export default function WordBattleArenaPage() {
     });
   }, [sessionToken, rematch, router]);
 
+  const handleWhatsAppNudge = useCallback(() => {
+    if (!session || !profile) return;
+    const lastMove = state?.history?.[state.history.length - 1];
+    const url = formatWhatsAppNudgeUrl({
+      publicId,
+      stateVersion: session.stateVersion,
+      senderName: profile.username,
+      opponentName,
+      lastMoveWord: lastMove?.word,
+      lastMoveScore: lastMove?.score,
+    });
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }, [session, profile, state, publicId, opponentName]);
+
+  const handleWhatsAppShare = useCallback(() => {
+    if (!profile) return;
+    const url = formatWhatsAppInviteUrl(publicId, profile.username);
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }, [profile, publicId]);
+
+  const handleWhatsAppShareResult = useCallback(() => {
+    if (!session || !session.result || !profile) return;
+    const myScore = state?.scores?.[profile.userId] ?? 0;
+    const oppUser = players.find((p) => p.userId !== profile.userId);
+    const oppScore = oppUser ? state?.scores?.[oppUser.userId] ?? 0 : 0;
+    const winner = players.find((p) => p.userId === session.result?.winnerId);
+    const url = formatWhatsAppResultUrl({
+      publicId,
+      winnerName: winner?.username ?? null,
+      viewerWon: session.result.winnerId === profile.userId,
+      isDraw: session.result.isDraw,
+      myScore,
+      opponentScore: oppScore,
+      opponentName: oppUser?.username ?? 'Opponent',
+    });
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }, [session, profile, state, players, publicId]);
+
   const handleMoveError = useCallback(
     (error: unknown, submittedVersion: number) => {
       if (!(error instanceof ApiClientError)) {
@@ -382,7 +425,12 @@ export default function WordBattleArenaPage() {
   const playerTwo = players[1];
 
   return (
-    <ArenaShell status={matchStatus} opponentName={opponentName}>
+    <ArenaShell
+      status={matchStatus}
+      opponentName={opponentName}
+      onWhatsAppNudge={isParticipant && !myTurn ? handleWhatsAppNudge : undefined}
+      onWhatsAppShare={handleWhatsAppShare}
+    >
       {/* Polling lost contact — last confirmed state stays on screen */}
       {sessionQuery.isError && (
         <div
@@ -401,6 +449,7 @@ export default function WordBattleArenaPage() {
       {session.status === 'waiting' && (
         <>
           <WaitingRoom
+            publicId={publicId}
             matchupOne={matchup.one}
             matchupTwo={matchup.two}
             shareUrl={shareUrl}
@@ -503,9 +552,27 @@ export default function WordBattleArenaPage() {
           )}
 
           {session.status === 'active' && isParticipant && !myTurn && (
-            <p className="py-1 text-center text-[11px] font-semibold text-neutral-500">
-              {opponentName ? `${opponentName} is thinking…` : 'Opponent is thinking…'}
-            </p>
+            <div className="flex flex-col items-center gap-1.5 py-1">
+              <p className="text-[11px] font-semibold text-neutral-400">
+                {opponentName ? `${opponentName} is thinking…` : 'Opponent is thinking…'}
+              </p>
+              <button
+                type="button"
+                onClick={handleWhatsAppNudge}
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold text-emerald-300 transition-all hover:brightness-110 active:scale-95"
+                style={{
+                  background: 'rgba(16,185,129,0.15)',
+                  border: '1px solid rgba(16,185,129,0.4)',
+                }}
+              >
+                <img
+                  src="/assets/shared/icons/icon-whatsapp.svg"
+                  alt=""
+                  className="h-3 w-3"
+                />
+                Nudge {opponentName ?? 'Opponent'} on WhatsApp
+              </button>
+            </div>
           )}
 
           <WordHistoryList entries={historyEntries} />
@@ -518,6 +585,7 @@ export default function WordBattleArenaPage() {
               myUserId={myUserId}
               onRematch={isParticipant ? handleRematch : undefined}
               isRematching={rematch.isPending}
+              onShareWhatsApp={handleWhatsAppShareResult}
             />
           )}
         </>

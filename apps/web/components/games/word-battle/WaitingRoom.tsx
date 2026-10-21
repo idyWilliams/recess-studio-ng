@@ -4,7 +4,10 @@ import { useState } from 'react';
 
 import { Button, PvPMatchup, type MatchupPlayer } from '@recess/ui';
 
+import { formatWhatsAppInviteUrl } from '@/lib/whatsapp';
+
 interface WaitingRoomProps {
+  publicId?: string | undefined;
   matchupOne: MatchupPlayer;
   matchupTwo: MatchupPlayer | null;
   shareUrl: string;
@@ -23,6 +26,7 @@ interface WaitingRoomProps {
  * joins and the server starts the match.
  */
 export function WaitingRoom({
+  publicId,
   matchupOne,
   matchupTwo,
   shareUrl,
@@ -84,6 +88,34 @@ export function WaitingRoom({
             {copied ? 'Copied!' : 'Copy'}
           </button>
         </div>
+
+        <div className="mt-2.5">
+          <a
+            href={
+              publicId
+                ? formatWhatsAppInviteUrl(publicId, matchupOne.username)
+                : `https://wa.me/?text=${encodeURIComponent(
+                    `🎮 ${matchupOne.username} challenged you to Word Battle on Recess!\n\nJoin the match here:\n${shareUrl}`,
+                  )}`
+            }
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-xs font-bold text-white transition-all hover:brightness-110 active:scale-98"
+            style={{
+              background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+              border: '1px solid rgba(16,185,129,0.5)',
+              boxShadow: '0 2px 10px rgba(16,185,129,0.25)',
+            }}
+          >
+            <img
+              src="/assets/shared/icons/icon-whatsapp.svg"
+              alt=""
+              className="h-4 w-4 filter invert"
+            />
+            Invite via WhatsApp
+          </a>
+        </div>
+
         <p className="mt-2 text-[11px] text-neutral-500">
           The match starts the moment your opponent joins — 15 seconds per turn.
         </p>

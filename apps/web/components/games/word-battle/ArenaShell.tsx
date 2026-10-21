@@ -9,14 +9,22 @@ interface ArenaShellProps {
   /** Header status chip; null while loading/errored (no match state to show yet). */
   status: MatchStatusState | null;
   opponentName?: string | undefined;
+  onWhatsAppNudge?: (() => void) | undefined;
+  onWhatsAppShare?: (() => void) | undefined;
   children: ReactNode;
 }
 
 /**
  * Fullscreen Word Battle surface: the approved dark arena background, decorative dot
- * grid, and the game header (Leave, title, live turn indicator).
+ * grid, and the game header (Leave, title, live turn indicator, and WhatsApp actions).
  */
-export function ArenaShell({ status, opponentName, children }: ArenaShellProps) {
+export function ArenaShell({
+  status,
+  opponentName,
+  onWhatsAppNudge,
+  onWhatsAppShare,
+  children,
+}: ArenaShellProps) {
   return (
     /*
      * `position:fixed; inset:0` escapes the root layout's pb-24 wrapper so
@@ -79,11 +87,51 @@ export function ArenaShell({ status, opponentName, children }: ArenaShellProps) 
             </span>
           </div>
 
-          {status ? (
-            <TurnIndicator status={status} opponentName={opponentName} />
-          ) : (
-            <span className="w-16" aria-hidden="true" />
-          )}
+          <div className="flex items-center gap-2">
+            {onWhatsAppNudge ? (
+              <button
+                type="button"
+                onClick={onWhatsAppNudge}
+                title={`Nudge ${opponentName ?? 'opponent'} on WhatsApp`}
+                className="flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-bold text-emerald-300 transition-all hover:brightness-110 active:scale-95"
+                style={{
+                  background: 'rgba(16,185,129,0.18)',
+                  border: '1px solid rgba(16,185,129,0.4)',
+                }}
+              >
+                <img
+                  src="/assets/shared/icons/icon-whatsapp.svg"
+                  alt=""
+                  className="h-3.5 w-3.5"
+                />
+                <span className="hidden sm:inline">Nudge</span>
+              </button>
+            ) : onWhatsAppShare ? (
+              <button
+                type="button"
+                onClick={onWhatsAppShare}
+                title="Share match on WhatsApp"
+                className="flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-bold text-emerald-300 transition-all hover:brightness-110 active:scale-95"
+                style={{
+                  background: 'rgba(16,185,129,0.18)',
+                  border: '1px solid rgba(16,185,129,0.4)',
+                }}
+              >
+                <img
+                  src="/assets/shared/icons/icon-whatsapp.svg"
+                  alt=""
+                  className="h-3.5 w-3.5"
+                />
+                <span className="hidden sm:inline">Share</span>
+              </button>
+            ) : null}
+
+            {status ? (
+              <TurnIndicator status={status} opponentName={opponentName} />
+            ) : (
+              <span className="w-16" aria-hidden="true" />
+            )}
+          </div>
         </div>
       </header>
 

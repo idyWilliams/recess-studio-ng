@@ -13,6 +13,7 @@ interface ResultOverlayProps {
   myUserId: string | null;
   onRematch?: (() => void) | undefined;
   isRematching?: boolean | undefined;
+  onShareWhatsApp?: (() => void) | undefined;
 }
 
 /** Final match result rendered only from the server-confirmed `result` payload. */
@@ -22,6 +23,7 @@ export function ResultOverlay({
   myUserId,
   onRematch,
   isRematching = false,
+  onShareWhatsApp,
 }: ResultOverlayProps) {
   const isDraw = result.isDraw;
   const winner = players.find((player) => player.userId === result.winnerId);
@@ -138,6 +140,26 @@ export function ResultOverlay({
                 Play Again
               </Button>
             </Link>
+          )}
+
+          {onShareWhatsApp && (
+            <button
+              type="button"
+              onClick={onShareWhatsApp}
+              className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-xs font-bold text-white transition-all hover:brightness-110 active:scale-98"
+              style={{
+                background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                border: '1px solid rgba(16,185,129,0.5)',
+                boxShadow: '0 4px 16px rgba(16,185,129,0.3)',
+              }}
+            >
+              <img
+                src="/assets/shared/icons/icon-whatsapp.svg"
+                alt=""
+                className="h-4 w-4 filter invert"
+              />
+              Share Result to WhatsApp
+            </button>
           )}
           <Link
             href="/games"
