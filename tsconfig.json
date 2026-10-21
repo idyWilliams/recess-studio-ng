@@ -6,6 +6,7 @@
     { "path": "packages/ui" },
     { "path": "games/word-battle" },
     { "path": "games/mancala" },
+    { "path": "games/whot" },
     { "path": "database" }
   ]
 }

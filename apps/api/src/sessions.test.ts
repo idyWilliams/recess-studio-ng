@@ -1303,4 +1303,51 @@ describe('Game Sessions & Turn Engine (Unit)', () => {
       expect(movedSession.currentPlayerId).toBe(p1.user.id); // Extra turn!
     });
   });
+
+  describe('Whot! Naija Classic Session Integration', () => {
+    it('creates, joins, and plays a server-authoritative Whot! match', async () => {
+      const { app, p1, p2 } = await setupTestApp();
+
+      // 1. P1 creates a Whot session
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/game-sessions',
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: { gameId: 'whot' },
+      });
+      expect(createRes.statusCode).toBe(201);
+      const session = createRes.json();
+      expect(session.gameId).toBe('whot');
+      expect(session.status).toBe('waiting');
+      const publicId = session.publicId;
+
+      // 2. P2 joins the match
+      const joinRes = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/join`,
+        headers: { authorization: `Bearer ${p2.sessionToken}` },
+      });
+      expect(joinRes.statusCode).toBe(200);
+      const activeSession = joinRes.json();
+      expect(activeSession.status).toBe('active');
+      expect(activeSession.currentPlayerId).toBe(p1.user.id);
+      expect(activeSession.state.topDiscard).toBeDefined();
+
+      // 3. P1 draws a card from market
+      const moveRes = await app.inject({
+        method: 'POST',
+        url: `/game-sessions/${publicId}/moves`,
+        headers: { authorization: `Bearer ${p1.sessionToken}` },
+        payload: {
+          move: { type: 'draw' },
+          expectedStateVersion: activeSession.stateVersion,
+        },
+      });
+      expect(moveRes.statusCode).toBe(200);
+      const movedSession = moveRes.json();
+      expect(movedSession.currentPlayerId).toBe(p2.user.id); // Turn passed to P2!
+      expect(movedSession.stateVersion).toBe(activeSession.stateVersion + 1);
+    });
+  });
 });
+
