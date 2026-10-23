@@ -20,6 +20,11 @@ describe('whatsapp utils', () => {
       const url = getVersionedMatchUrl(publicId, undefined, 'https://recess.gg');
       expect(url).toBe('https://recess.gg/games/word-battle/aabbccddeeff?v=0');
     });
+
+    it('falls back to recess.studio if origin and window are undefined', () => {
+      const url = getVersionedMatchUrl(publicId, 2);
+      expect(url).toBe('https://recess.studio/games/word-battle/aabbccddeeff?v=2');
+    });
   });
 
   describe('formatWhatsAppInviteUrl', () => {

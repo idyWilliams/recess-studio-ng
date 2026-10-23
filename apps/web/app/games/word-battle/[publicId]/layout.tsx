@@ -49,21 +49,28 @@ export async function generateMetadata({
     }
   }
 
-  const ogImageUrl = `/games/word-battle/${publicId}/opengraph-image`;
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://recess.studio';
+  const metadataBase = new URL(siteUrl);
+  const absoluteOgImageUrl = `${siteUrl}/games/word-battle/${publicId}/opengraph-image`;
+  const absolutePageUrl = `${siteUrl}/games/word-battle/${publicId}`;
 
   return {
+    metadataBase,
     title,
     description,
     openGraph: {
       title,
       description,
+      url: absolutePageUrl,
+      siteName: 'Recess Studio',
       type: 'website',
       images: [
         {
-          url: ogImageUrl,
+          url: absoluteOgImageUrl,
           width: 1200,
           height: 630,
           alt: 'Word Battle Match Preview',
+          type: 'image/png',
         },
       ],
     },
@@ -71,7 +78,7 @@ export async function generateMetadata({
       card: 'summary_large_image',
       title,
       description,
-      images: [ogImageUrl],
+      images: [absoluteOgImageUrl],
     },
   };
 }

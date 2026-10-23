@@ -32,7 +32,7 @@ export function WhatsAppInviteCard({
       ? getVersionedMatchUrl(publicId, stateVersion)
       : typeof window !== 'undefined'
       ? `${window.location.origin}/games/word-battle`
-      : 'https://recess.gg/games/word-battle');
+      : `${process.env.NEXT_PUBLIC_SITE_URL || 'https://recess.studio'}/games/word-battle`);
 
   const waLink = publicId
     ? formatWhatsAppInviteUrl(publicId, creatorName ?? 'A friend')

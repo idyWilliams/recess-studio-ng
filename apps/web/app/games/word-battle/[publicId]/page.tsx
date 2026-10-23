@@ -26,6 +26,8 @@ import {
   formatWhatsAppInviteUrl,
   formatWhatsAppNudgeUrl,
   formatWhatsAppResultUrl,
+  getVersionedMatchUrl,
+  shareMatchSnapshotToWhatsApp,
 } from '@/lib/whatsapp';
 import { useCountdownRemainingMs } from '@/hooks/use-countdown';
 import { useGameSession } from '@/hooks/use-game-session';
@@ -215,7 +217,11 @@ export default function WordBattleArenaPage() {
   const handleWhatsAppNudge = useCallback(() => {
     if (!session || !profile) return;
     const lastMove = state?.history?.[state.history.length - 1];
-    const url = formatWhatsAppNudgeUrl({
+    const myScore = state?.scores?.[profile.userId] ?? 0;
+    const oppUser = players.find((p) => p.userId !== profile.userId);
+    const oppScore = oppUser ? state?.scores?.[oppUser.userId] ?? 0 : 0;
+
+    const fallbackUrl = formatWhatsAppNudgeUrl({
       publicId,
       stateVersion: session.stateVersion,
       senderName: profile.username,
@@ -223,13 +229,63 @@ export default function WordBattleArenaPage() {
       lastMoveWord: lastMove?.word,
       lastMoveScore: lastMove?.score,
     });
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }, [session, profile, state, publicId, opponentName]);
+
+    const versionedUrl = getVersionedMatchUrl(publicId, session.stateVersion);
+
+    void shareMatchSnapshotToWhatsApp({
+      snapshotOptions: {
+        gameName: 'Word Battle',
+        headline: `${opponentName ? opponentName + "'s" : "Opponent's"} Turn!`,
+        statusBadge: state ? getRoundInfo(state) : 'ACTIVE MATCH',
+        playerOne: {
+          name: profile.username,
+          score: myScore,
+          lives: state?.lives?.[profile.userId],
+          isCurrentTurn: false,
+        },
+        playerTwo: {
+          name: oppUser?.username ?? 'Opponent',
+          score: oppScore,
+          lives: oppUser ? state?.lives?.[oppUser.userId] : undefined,
+          isCurrentTurn: true,
+        },
+        lastWord: lastMove?.word,
+        lastScore: lastMove?.score,
+      },
+      shareTitle: 'Recess Studio — Word Battle',
+      shareText: `⚔️ Your turn in Word Battle against ${profile.username}!`,
+      shareUrl: versionedUrl,
+      fallbackUrl,
+    });
+  }, [session, profile, state, publicId, opponentName, players]);
 
   const handleWhatsAppShare = useCallback(() => {
     if (!profile) return;
-    const url = formatWhatsAppInviteUrl(publicId, profile.username);
-    window.open(url, '_blank', 'noopener,noreferrer');
+    const fallbackUrl = formatWhatsAppInviteUrl(publicId, profile.username);
+    const versionedUrl = getVersionedMatchUrl(publicId, 0);
+
+    void shareMatchSnapshotToWhatsApp({
+      snapshotOptions: {
+        gameName: 'Word Battle',
+        headline: '🎮 Duel Invitation!',
+        statusBadge: 'WAITING FOR OPPONENT',
+        playerOne: {
+          name: profile.username,
+          score: 0,
+          lives: 3,
+          isCurrentTurn: true,
+        },
+        playerTwo: {
+          name: 'Open Seat',
+          score: 0,
+          lives: 3,
+        },
+      },
+      shareTitle: 'Recess Studio — Word Battle Invite',
+      shareText: `🎮 ${profile.username} challenged you to a game of Word Battle on Recess!`,
+      shareUrl: versionedUrl,
+      fallbackUrl,
+    });
   }, [profile, publicId]);
 
   const handleWhatsAppShareResult = useCallback(() => {
@@ -238,16 +294,50 @@ export default function WordBattleArenaPage() {
     const oppUser = players.find((p) => p.userId !== profile.userId);
     const oppScore = oppUser ? state?.scores?.[oppUser.userId] ?? 0 : 0;
     const winner = players.find((p) => p.userId === session.result?.winnerId);
-    const url = formatWhatsAppResultUrl({
+    const viewerWon = session.result.winnerId === profile.userId;
+
+    const fallbackUrl = formatWhatsAppResultUrl({
       publicId,
       winnerName: winner?.username ?? null,
-      viewerWon: session.result.winnerId === profile.userId,
+      viewerWon,
       isDraw: session.result.isDraw,
       myScore,
       opponentScore: oppScore,
       opponentName: oppUser?.username ?? 'Opponent',
     });
-    window.open(url, '_blank', 'noopener,noreferrer');
+
+    const versionedUrl = getVersionedMatchUrl(publicId, 999);
+
+    const headline = session.result.isDraw
+      ? '🤝 Tie Game!'
+      : viewerWon
+      ? `🏆 ${profile.username} Won!`
+      : `🏆 ${winner?.username ?? 'Opponent'} Won!`;
+
+    void shareMatchSnapshotToWhatsApp({
+      snapshotOptions: {
+        gameName: 'Word Battle',
+        headline,
+        statusBadge: session.result.isKnockout ? 'KNOCKOUT VICTORY' : 'FINAL RESULT',
+        playerOne: {
+          name: profile.username,
+          score: myScore,
+          lives: state?.lives?.[profile.userId],
+          isWinner: viewerWon,
+        },
+        playerTwo: {
+          name: oppUser?.username ?? 'Opponent',
+          score: oppScore,
+          lives: oppUser ? state?.lives?.[oppUser.userId] : undefined,
+          isWinner: !viewerWon && !session.result.isDraw,
+        },
+        lastWord: state?.history?.[state.history.length - 1]?.word,
+      },
+      shareTitle: 'Recess Studio — Word Battle Result',
+      shareText: `${headline}\nFinal: ${myScore} pts vs ${oppUser?.username ?? 'Opponent'} (${oppScore} pts)`,
+      shareUrl: versionedUrl,
+      fallbackUrl,
+    });
   }, [session, profile, state, players, publicId]);
 
   const handleMoveError = useCallback(

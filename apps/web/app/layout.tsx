@@ -4,9 +4,19 @@ import { BottomNav } from '@/components/navigation/BottomNav';
 import { QueryProvider } from '@/components/providers/QueryProvider';
 import './globals.css';
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://recess.studio';
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: 'Recess — Social Multiplayer Gaming Arcade',
   description: 'Play. Connect. Compete. Mobile-first social games.',
+  openGraph: {
+    title: 'Recess — Social Multiplayer Gaming Arcade',
+    description: 'Play. Connect. Compete. Mobile-first social games.',
+    url: siteUrl,
+    siteName: 'Recess Studio',
+    type: 'website',
+  },
 };
 
 export const viewport: Viewport = {

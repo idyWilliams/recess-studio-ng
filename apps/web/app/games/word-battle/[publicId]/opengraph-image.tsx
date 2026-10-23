@@ -37,6 +37,10 @@ export default async function Image({
     <MatchPreviewCard publicId={publicId} session={session} />,
     {
       ...size,
+      headers: {
+        'Cache-Control': 'public, max-age=0, must-revalidate',
+        'Content-Type': 'image/png',
+      },
     },
   );
 }

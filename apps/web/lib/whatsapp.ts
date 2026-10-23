@@ -7,6 +7,15 @@
  * match preview card without stale cache hits.
  */
 
+export {
+  generateMatchSnapshotBlob,
+  isWebShareFileSupported,
+  shareMatchSnapshotToWhatsApp,
+  type MatchSnapshotOptions,
+  type ShareMatchOptions,
+  type SnapshotPlayerInfo,
+} from './share-snapshot';
+
 export interface WhatsAppNudgeOptions {
   publicId: string;
   stateVersion: number;
@@ -40,7 +49,7 @@ export function getVersionedMatchUrl(
     origin ||
     (typeof window !== 'undefined' && window.location.origin
       ? window.location.origin
-      : 'https://recess.gg');
+      : process.env.NEXT_PUBLIC_SITE_URL || 'https://recess.studio');
   return `${base}/games/word-battle/${publicId}?v=${stateVersion}`;
 }
 
