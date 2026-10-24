@@ -11,6 +11,7 @@ interface ArenaShellProps {
   opponentName?: string | undefined;
   onWhatsAppNudge?: (() => void) | undefined;
   onWhatsAppShare?: (() => void) | undefined;
+  embedded?: boolean | undefined;
   children: ReactNode;
 }
 
@@ -23,23 +24,23 @@ export function ArenaShell({
   opponentName,
   onWhatsAppNudge,
   onWhatsAppShare,
+  embedded = false,
   children,
 }: ArenaShellProps) {
   return (
     /*
-     * `position:fixed; inset:0` escapes the root layout's pb-24 wrapper so
-     * the background genuinely covers 100% of the viewport with no cream bleed.
-     * `overflow-y:auto` preserves scroll when content is taller than the screen.
-     *
-     * Background is pure CSS — no SVG background-image files, which fail
-     * cross-browser when the SVG element has width/height="100%" (browser
-     * cannot infer intrinsic size → background-size:cover does nothing).
+     * When standalone, `position:fixed; inset:0` escapes the root layout's pb-24 wrapper.
+     * When embedded in WhatsAppMiniAppShell, fills the available sheet space naturally.
      */
     <div
-      className="fixed inset-0 z-50 flex flex-col overflow-y-auto overscroll-contain text-white min-h-[100dvh] h-[100dvh]"
+      className={
+        embedded
+          ? 'relative flex-1 flex flex-col overflow-y-auto overscroll-contain text-white w-full min-h-0'
+          : 'fixed inset-0 z-50 flex flex-col overflow-y-auto overscroll-contain text-white min-h-[100dvh] h-[100dvh]'
+      }
       style={{
-        height: '100dvh',
-        minHeight: '100dvh',
+        height: embedded ? '100%' : '100dvh',
+        minHeight: embedded ? '0' : '100dvh',
         overscrollBehavior: 'contain',
         WebkitOverflowScrolling: 'touch',
         background: `

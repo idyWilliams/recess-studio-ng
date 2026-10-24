@@ -23,6 +23,7 @@ import {
   type MoveFeedback,
 } from '@/lib/word-battle-view';
 import {
+  formatWhatsAppDeepLink,
   formatWhatsAppInviteUrl,
   formatWhatsAppNudgeUrl,
   formatWhatsAppResultUrl,
@@ -30,6 +31,7 @@ import {
   shareMatchSnapshotToWhatsApp,
 } from '@/lib/whatsapp';
 import { sendMatchResultToWhatsApp } from '@/lib/whatsapp-notify';
+import { WhatsAppMiniAppShell } from '@/components/shell/WhatsAppMiniAppShell';
 import { useCountdownRemainingMs } from '@/hooks/use-countdown';
 import { useGameSession } from '@/hooks/use-game-session';
 import { useIdentity } from '@/hooks/use-identity';
@@ -443,46 +445,101 @@ export default function WordBattleArenaPage() {
     });
   }, [sessionToken, joinSession, refreshSession]);
 
+  // ── WhatsApp Mini-App Integration ─────────────────────────────────────
+  const chatHistoryEntries = useMemo(() => {
+    return historyEntries.map((e) => ({
+      id: e.key,
+      word: e.word,
+      score: e.score,
+      playerName: e.playerUsername,
+      isViewer: profile ? e.playerUsername === profile.username : false,
+    }));
+  }, [historyEntries, profile]);
+
+  const myScore = profile && state ? state.scores[profile.userId] ?? 0 : 0;
+  const oppUser = players.find((p) => p.userId !== profile?.userId);
+  const oppScore = oppUser && state ? state.scores[oppUser.userId] ?? 0 : 0;
+  const countdownRemainingSec =
+    remainingMs !== null ? Math.ceil(remainingMs / 1000) : null;
+
+  const handleReturnToWhatsApp = useCallback(() => {
+    const deepLink = formatWhatsAppDeepLink(
+      `⚔️ Back in Word Battle against ${opponentName ?? 'opponent'}!`,
+    );
+    if (typeof window !== 'undefined') {
+      if (deepLink.startsWith('whatsapp://')) {
+        window.location.href = deepLink;
+      } else {
+        window.open(deepLink, '_blank', 'noopener,noreferrer');
+      }
+    }
+  }, [opponentName]);
+
+  const handleSendWhatsAppChat = useCallback(
+    (message: string) => {
+      const versionedUrl = getVersionedMatchUrl(
+        publicId,
+        session?.stateVersion ?? 0,
+      );
+      const deepLink = formatWhatsAppDeepLink(
+        `💬 "${message}"\n\nWord Battle vs ${profile?.username ?? 'me'}:\n${versionedUrl}`,
+      );
+      if (typeof window !== 'undefined') {
+        if (deepLink.startsWith('whatsapp://')) {
+          window.location.href = deepLink;
+        } else {
+          window.open(deepLink, '_blank', 'noopener,noreferrer');
+        }
+      }
+    },
+    [publicId, session?.stateVersion, profile?.username],
+  );
+
   // ── Render ──────────────────────────────────────────────────────────────
   if (!session) {
     const isLoading = sessionQuery.isPending;
     const loadError = sessionQuery.error;
     return (
-      <ArenaShell status={null}>
-        <div
-          className="mx-auto w-full max-w-sm self-center rounded-2xl p-6 text-center"
-          style={{
-            background: 'linear-gradient(160deg, #161D2F 0%, #0D111C 100%)',
-            border: '1px solid rgba(108,56,255,0.25)',
-          }}
-        >
-          {isLoading ? (
-            <>
-              <p className="text-sm font-bold text-white">Loading match…</p>
-              <p className="mt-1 text-xs text-neutral-500">{publicId}</p>
-            </>
-          ) : (
-            <>
-              <h2 className="text-sm font-bold text-white">
-                {loadError instanceof ApiClientError &&
-                loadError.code === 'GAME_NOT_FOUND'
-                  ? 'This match does not exist'
-                  : 'Could not load the match'}
-              </h2>
-              <p className="mt-1 text-xs text-neutral-400">
-                {loadError instanceof ApiClientError
-                  ? loadError.message
-                  : 'An unexpected error occurred.'}
-              </p>
-              <div className="mt-4 flex flex-col items-center gap-2">
-                <Button size="md" onClick={() => void refreshSession()}>
-                  Try Again
-                </Button>
-              </div>
-            </>
-          )}
-        </div>
-      </ArenaShell>
+      <WhatsAppMiniAppShell
+        gameTitle="Word Battle"
+        opponentName="Waiting for Match"
+      >
+        <ArenaShell embedded status={null}>
+          <div
+            className="mx-auto w-full max-w-sm self-center rounded-2xl p-6 text-center"
+            style={{
+              background: 'linear-gradient(160deg, #161D2F 0%, #0D111C 100%)',
+              border: '1px solid rgba(108,56,255,0.25)',
+            }}
+          >
+            {isLoading ? (
+              <>
+                <p className="text-sm font-bold text-white">Loading match…</p>
+                <p className="mt-1 text-xs text-neutral-500">{publicId}</p>
+              </>
+            ) : (
+              <>
+                <h2 className="text-sm font-bold text-white">
+                  {loadError instanceof ApiClientError &&
+                  loadError.code === 'GAME_NOT_FOUND'
+                    ? 'This match does not exist'
+                    : 'Could not load the match'}
+                </h2>
+                <p className="mt-1 text-xs text-neutral-400">
+                  {loadError instanceof ApiClientError
+                    ? loadError.message
+                    : 'An unexpected error occurred.'}
+                </p>
+                <div className="mt-4 flex flex-col items-center gap-2">
+                  <Button size="md" onClick={() => void refreshSession()}>
+                    Try Again
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </ArenaShell>
+      </WhatsAppMiniAppShell>
     );
   }
 
@@ -490,12 +547,25 @@ export default function WordBattleArenaPage() {
   const playerTwo = players[1];
 
   return (
-    <ArenaShell
-      status={matchStatus}
-      opponentName={opponentName}
-      onWhatsAppNudge={isParticipant && !myTurn ? handleWhatsAppNudge : undefined}
-      onWhatsAppShare={handleWhatsAppShare}
+    <WhatsAppMiniAppShell
+      gameTitle="Word Battle"
+      opponentName={opponentName ?? 'Opponent'}
+      opponentScore={oppScore}
+      myScore={myScore}
+      myTurn={Boolean(myTurn)}
+      timeLeftSec={countdownRemainingSec}
+      lastWord={state?.history?.[state.history.length - 1]?.word}
+      historyEntries={chatHistoryEntries}
+      onReturnToWhatsApp={handleReturnToWhatsApp}
+      onSendWhatsAppChat={handleSendWhatsAppChat}
     >
+      <ArenaShell
+        embedded
+        status={matchStatus}
+        opponentName={opponentName}
+        onWhatsAppNudge={isParticipant && !myTurn ? handleWhatsAppNudge : undefined}
+        onWhatsAppShare={handleWhatsAppShare}
+      >
       {/* Polling lost contact — last confirmed state stays on screen */}
       {sessionQuery.isError && (
         <div
@@ -656,5 +726,6 @@ export default function WordBattleArenaPage() {
         </>
       )}
     </ArenaShell>
+    </WhatsAppMiniAppShell>
   );
 }
