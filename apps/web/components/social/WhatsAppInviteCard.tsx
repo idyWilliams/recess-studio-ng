@@ -3,7 +3,11 @@
 import { useState } from 'react';
 import { Button } from '@recess/ui';
 
-import { formatWhatsAppInviteUrl, getVersionedMatchUrl } from '@/lib/whatsapp';
+import {
+  formatWhatsAppDeepLink,
+  formatWhatsAppInviteUrl,
+  getVersionedMatchUrl,
+} from '@/lib/whatsapp';
 
 export interface WhatsAppInviteCardProps {
   publicId?: string | undefined;
@@ -36,9 +40,9 @@ export function WhatsAppInviteCard({
 
   const waLink = publicId
     ? formatWhatsAppInviteUrl(publicId, creatorName ?? 'A friend')
-    : `https://wa.me/?text=${encodeURIComponent(
+    : formatWhatsAppDeepLink(
         `🎮 Play games with me on Recess!\n\nJoin directly in your browser:\n${resolvedUrl}`,
-      )}`;
+      );
 
   const handleCopy = () => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
@@ -86,28 +90,33 @@ export function WhatsAppInviteCard({
       </div>
 
       <div className="mt-4 flex flex-col sm:flex-row gap-2">
-        <a
-          href={waLink}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex-1"
-        >
-          <Button
-            variant="primary"
-            size="md"
-            fullWidth
-            className="!bg-emerald-600 hover:!bg-emerald-500 !border-emerald-500 text-white font-bold"
-          >
-            <span className="flex items-center justify-center gap-2">
-              <img
-                src="/assets/shared/icons/icon-whatsapp.svg"
-                alt=""
-                className="h-4 w-4 filter invert"
-              />
-              Share on WhatsApp
-            </span>
-          </Button>
-        </a>
+        {(() => {
+          const isNative = waLink.startsWith('whatsapp://');
+          return (
+            <a
+              href={waLink}
+              target={isNative ? undefined : '_blank'}
+              rel={isNative ? undefined : 'noopener noreferrer'}
+              className="flex-1"
+            >
+              <Button
+                variant="primary"
+                size="md"
+                fullWidth
+                className="!bg-emerald-600 hover:!bg-emerald-500 !border-emerald-500 text-white font-bold"
+              >
+                <span className="flex items-center justify-center gap-2">
+                  <img
+                    src="/assets/shared/icons/icon-whatsapp.svg"
+                    alt=""
+                    className="h-4 w-4 filter invert"
+                  />
+                  Share on WhatsApp
+                </span>
+              </Button>
+            </a>
+          );
+        })()}
 
         <Button
           variant={isDark ? 'secondary' : 'secondary'}

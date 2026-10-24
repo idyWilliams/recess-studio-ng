@@ -29,6 +29,7 @@ import {
   getVersionedMatchUrl,
   shareMatchSnapshotToWhatsApp,
 } from '@/lib/whatsapp';
+import { sendMatchResultToWhatsApp } from '@/lib/whatsapp-notify';
 import { useCountdownRemainingMs } from '@/hooks/use-countdown';
 import { useGameSession } from '@/hooks/use-game-session';
 import { useIdentity } from '@/hooks/use-identity';
@@ -296,47 +297,21 @@ export default function WordBattleArenaPage() {
     const winner = players.find((p) => p.userId === session.result?.winnerId);
     const viewerWon = session.result.winnerId === profile.userId;
 
-    const fallbackUrl = formatWhatsAppResultUrl({
+    void sendMatchResultToWhatsApp({
       publicId,
+      myName: profile.username,
+      myScore,
+      myLives: state?.lives?.[profile.userId],
+      opponentName: oppUser?.username ?? 'Opponent',
+      opponentScore: oppScore,
+      opponentLives: oppUser ? state?.lives?.[oppUser.userId] : undefined,
       winnerName: winner?.username ?? null,
       viewerWon,
       isDraw: session.result.isDraw,
-      myScore,
-      opponentScore: oppScore,
-      opponentName: oppUser?.username ?? 'Opponent',
-    });
-
-    const versionedUrl = getVersionedMatchUrl(publicId, 999);
-
-    const headline = session.result.isDraw
-      ? '🤝 Tie Game!'
-      : viewerWon
-      ? `🏆 ${profile.username} Won!`
-      : `🏆 ${winner?.username ?? 'Opponent'} Won!`;
-
-    void shareMatchSnapshotToWhatsApp({
-      snapshotOptions: {
-        gameName: 'Word Battle',
-        headline,
-        statusBadge: session.result.isKnockout ? 'KNOCKOUT VICTORY' : 'FINAL RESULT',
-        playerOne: {
-          name: profile.username,
-          score: myScore,
-          lives: state?.lives?.[profile.userId],
-          isWinner: viewerWon,
-        },
-        playerTwo: {
-          name: oppUser?.username ?? 'Opponent',
-          score: oppScore,
-          lives: oppUser ? state?.lives?.[oppUser.userId] : undefined,
-          isWinner: !viewerWon && !session.result.isDraw,
-        },
-        lastWord: state?.history?.[state.history.length - 1]?.word,
-      },
-      shareTitle: 'Recess Studio — Word Battle Result',
-      shareText: `${headline}\nFinal: ${myScore} pts vs ${oppUser?.username ?? 'Opponent'} (${oppScore} pts)`,
-      shareUrl: versionedUrl,
-      fallbackUrl,
+      isKnockout: session.result.isKnockout,
+      rematchPublicId: session.result.rematchPublicId,
+      lastWord: state?.history?.[state.history.length - 1]?.word,
+      origin: typeof window !== 'undefined' ? window.location.origin : undefined,
     });
   }, [session, profile, state, players, publicId]);
 

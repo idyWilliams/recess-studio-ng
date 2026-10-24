@@ -388,6 +388,10 @@ export async function shareMatchSnapshotToWhatsApp(
   }
 
   // Graceful Fallback: Open WhatsApp deep link with versioned OpenGraph URL
-  window.open(options.fallbackUrl, '_blank', 'noopener,noreferrer');
+  if (options.fallbackUrl.startsWith('whatsapp://')) {
+    window.location.href = options.fallbackUrl;
+  } else {
+    window.open(options.fallbackUrl, '_blank', 'noopener,noreferrer');
+  }
   return true;
 }

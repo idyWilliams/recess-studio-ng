@@ -122,6 +122,43 @@ export function ResultOverlay({
           </p>
         )}
 
+        {/* WhatsApp Return Auto-Prompt Banner */}
+        {onShareWhatsApp && (
+          <div
+            className="mt-4 flex items-center justify-between rounded-xl p-3 text-left"
+            style={{
+              background: 'rgba(16,185,129,0.12)',
+              border: '1px solid rgba(16,185,129,0.3)',
+            }}
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <img
+                src="/assets/shared/icons/icon-whatsapp.svg"
+                alt=""
+                className="h-5 w-5 flex-shrink-0"
+              />
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-emerald-300 truncate">
+                  Return to WhatsApp Chat
+                </p>
+                <p className="text-[10px] text-emerald-200/70 truncate">
+                  Post final scoreboard & rematch link
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onShareWhatsApp}
+              className="flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-bold text-white transition-all hover:brightness-110 active:scale-95"
+              style={{
+                background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+              }}
+            >
+              Send
+            </button>
+          </div>
+        )}
+
         <div className="mt-5 flex flex-col gap-2">
           {onRematch ? (
             <Button
@@ -158,7 +195,7 @@ export function ResultOverlay({
                 alt=""
                 className="h-4 w-4 filter invert"
               />
-              Share Result to WhatsApp
+              Send Final Result to WhatsApp
             </button>
           )}
           <Link

@@ -77,6 +77,7 @@ describe('share-snapshot', () => {
     beforeEach(() => {
       mockWindowOpen = vi.fn();
       (globalThis as unknown as { window: unknown }).window = {
+        location: { href: '' },
         open: mockWindowOpen,
       };
     });
@@ -103,6 +104,20 @@ describe('share-snapshot', () => {
         '_blank',
         'noopener,noreferrer',
       );
+    });
+
+    it('redirects via window.location.href when fallbackUrl is a native whatsapp:// scheme', async () => {
+      const result = await shareMatchSnapshotToWhatsApp({
+        snapshotOptions: mockSnapshotOptions,
+        shareTitle: 'Recess Studio',
+        shareText: 'Your turn!',
+        shareUrl: 'https://recess.gg/match?v=4',
+        fallbackUrl: 'whatsapp://send?text=fallback',
+      });
+
+      expect(result).toBe(true);
+      expect(mockWindowOpen).not.toHaveBeenCalled();
+      expect(window.location.href).toBe('whatsapp://send?text=fallback');
     });
 
     it('invokes navigator.share with File when canShare returns true', async () => {

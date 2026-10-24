@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
 import type { WordBattleSession } from '@/lib/api-client';
+import { getDynamicSiteUrl } from '@/lib/server-url';
 
 async function fetchSession(publicId: string): Promise<WordBattleSession | null> {
   const apiTarget = process.env.API_PROXY_TARGET ?? 'http://localhost:4000';
@@ -49,10 +50,18 @@ export async function generateMetadata({
     }
   }
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://recess.studio';
+  const siteUrl = await getDynamicSiteUrl();
   const metadataBase = new URL(siteUrl);
-  const absoluteOgImageUrl = `${siteUrl}/games/word-battle/${publicId}/opengraph-image`;
+  const stateVersion = session?.stateVersion ?? 0;
+  const ogImageUrl = `${siteUrl}/api/og/match/${publicId}?v=${stateVersion}`;
+  const secureOgImageUrl = ogImageUrl.startsWith('http://')
+    ? ogImageUrl.replace('http://', 'https://')
+    : ogImageUrl;
   const absolutePageUrl = `${siteUrl}/games/word-battle/${publicId}`;
+
+  const alt = session
+    ? `${session.players[0]?.username ?? 'Player 1'} vs ${session.players[1]?.username ?? 'Opponent'} in Word Battle | Recess Studio`
+    : 'Word Battle Match Preview | Recess Studio';
 
   return {
     metadataBase,
@@ -66,10 +75,11 @@ export async function generateMetadata({
       type: 'website',
       images: [
         {
-          url: absoluteOgImageUrl,
+          url: ogImageUrl,
+          secureUrl: secureOgImageUrl,
           width: 1200,
           height: 630,
-          alt: 'Word Battle Match Preview',
+          alt,
           type: 'image/png',
         },
       ],
@@ -78,7 +88,7 @@ export async function generateMetadata({
       card: 'summary_large_image',
       title,
       description,
-      images: [absoluteOgImageUrl],
+      images: [ogImageUrl],
     },
   };
 }

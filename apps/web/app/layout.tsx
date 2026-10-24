@@ -4,24 +4,35 @@ import { BottomNav } from '@/components/navigation/BottomNav';
 import { QueryProvider } from '@/components/providers/QueryProvider';
 import './globals.css';
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://recess.studio';
+import { getDynamicSiteUrl } from '@/lib/server-url';
 
-export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
-  title: 'Recess — Social Multiplayer Gaming Arcade',
-  description: 'Play. Connect. Compete. Mobile-first social games.',
-  openGraph: {
+export async function generateMetadata(): Promise<Metadata> {
+  const siteUrl = await getDynamicSiteUrl();
+  return {
+    metadataBase: new URL(siteUrl),
     title: 'Recess — Social Multiplayer Gaming Arcade',
     description: 'Play. Connect. Compete. Mobile-first social games.',
-    url: siteUrl,
-    siteName: 'Recess Studio',
-    type: 'website',
-  },
-};
+    openGraph: {
+      title: 'Recess — Social Multiplayer Gaming Arcade',
+      description: 'Play. Connect. Compete. Mobile-first social games.',
+      url: siteUrl,
+      siteName: 'Recess Studio',
+      type: 'website',
+    },
+    appleWebApp: {
+      capable: true,
+      statusBarStyle: 'black-translucent',
+      title: 'Recess Studio',
+    },
+  };
+}
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
   themeColor: '#05070B',
 };
 
