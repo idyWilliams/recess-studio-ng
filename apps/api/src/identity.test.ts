@@ -174,4 +174,89 @@ describe('Identity and Authentication routes', () => {
     expect(pubBody.email).toBeUndefined();
     expect(pubBody.sessionToken).toBeUndefined();
   });
+
+  it('WhatsApp privacy vault: masks phone on owner response and NEVER leaks phone to public directory', async () => {
+    const identityService = new IdentityService();
+    const app = buildApp(env, identityService);
+
+    const regRes = await app.inject({
+      method: 'POST',
+      url: '/players/register',
+      payload: {
+        username: 'PrivateGamer',
+        whatsappNumber: '+2348099887766',
+        displayName: 'Private Player',
+      },
+    });
+
+    expect(regRes.statusCode).toBe(200);
+    const regBody = regRes.json();
+    // Owner sees masked WhatsApp format
+    expect(regBody.profile.maskedWhatsApp).toBe('+234 ••• ••66');
+    expect(regBody.profile.whatsappVerified).toBe(true);
+
+    // Public directory lookup strictly conceals the phone
+    const profileRes = await app.inject({
+      method: 'GET',
+      url: `/gaming-profiles/${regBody.profile.id}`,
+    });
+    expect(profileRes.statusCode).toBe(200);
+    const pubBody = profileRes.json();
+    expect(pubBody.username).toBe('PrivateGamer');
+    expect(pubBody.whatsappNumber).toBeUndefined();
+    expect(pubBody.maskedWhatsApp).toBeUndefined();
+
+    // Live stats directory also never leaks any raw phone numbers
+    const statsRes = await app.inject({
+      method: 'GET',
+      url: '/players/live-stats',
+    });
+    expect(statsRes.statusCode).toBe(200);
+    const stats = statsRes.json();
+    expect(stats.totalRegisteredPlayers).toBeGreaterThanOrEqual(1);
+    expect(stats.onlineNowCount).toBeGreaterThanOrEqual(1);
+    for (const player of stats.recentPlayers) {
+      expect(player.whatsappNumber).toBeUndefined();
+      expect(player.phone).toBeUndefined();
+    }
+  });
+
+  it('Cross-Context Restore: Entering existing WhatsApp number restores existing account and session', async () => {
+    const identityService = new IdentityService();
+    const app = buildApp(env, identityService);
+
+    // First visit: register on browser
+    const firstReg = await app.inject({
+      method: 'POST',
+      url: '/players/register',
+      payload: {
+        username: 'PwaSyncPlayer',
+        whatsappNumber: '+2348123456789',
+        displayName: 'Sync Legend',
+      },
+    });
+    expect(firstReg.statusCode).toBe(200);
+    const firstBody = firstReg.json();
+    const originalUserId = firstBody.user.id;
+    const originalProfileId = firstBody.profile.id;
+
+    // Second visit on Home Screen PWA (different session, but same WhatsApp number):
+    const secondReg = await app.inject({
+      method: 'POST',
+      url: '/players/register',
+      payload: {
+        username: 'PwaSyncPlayer',
+        whatsappNumber: '+2348123456789',
+      },
+    });
+    expect(secondReg.statusCode).toBe(200);
+    const secondBody = secondReg.json();
+
+    // Verifies account restore: returns the same user and profile ID!
+    expect(secondBody.user.id).toBe(originalUserId);
+    expect(secondBody.profile.id).toBe(originalProfileId);
+    expect(secondBody.profile.username).toBe('PwaSyncPlayer');
+    expect(secondBody.profile.maskedWhatsApp).toBe('+234 ••• ••89');
+    expect(secondBody.sessionToken).toBeDefined();
+  });
 });

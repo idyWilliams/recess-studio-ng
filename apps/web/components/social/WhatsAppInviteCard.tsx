@@ -1,8 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Button } from '@recess/ui';
-
+import { shareMatchSnapshotToWhatsApp } from '@/lib/share-snapshot';
 import {
   formatWhatsAppDeepLink,
   formatWhatsAppInviteUrl,
@@ -21,14 +20,15 @@ export interface WhatsAppInviteCardProps {
 
 export function WhatsAppInviteCard({
   publicId,
-  creatorName,
+  creatorName = 'A friend',
   shareUrl,
   stateVersion = 0,
   title = 'Instant WhatsApp Invitations',
   description = 'Invite anyone directly from WhatsApp. Your phone number is never exposed to opponents — all games run on verified Recess gaming profiles.',
-  tone = 'light',
+  tone = 'dark',
 }: WhatsAppInviteCardProps) {
   const [copied, setCopied] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
 
   const resolvedUrl =
     shareUrl ||
@@ -38,8 +38,8 @@ export function WhatsAppInviteCard({
       ? `${window.location.origin}/games/word-battle`
       : `${process.env.NEXT_PUBLIC_SITE_URL || 'https://recess.studio'}/games/word-battle`);
 
-  const waLink = publicId
-    ? formatWhatsAppInviteUrl(publicId, creatorName ?? 'A friend')
+  const fallbackWaLink = publicId
+    ? formatWhatsAppInviteUrl(publicId, creatorName)
     : formatWhatsAppDeepLink(
         `🎮 Play games with me on Recess!\n\nJoin directly in your browser:\n${resolvedUrl}`,
       );
@@ -52,80 +52,86 @@ export function WhatsAppInviteCard({
     }
   };
 
-  const isDark = tone === 'dark';
+  const handleShareToWhatsApp = async () => {
+    setIsSharing(true);
+    try {
+      await shareMatchSnapshotToWhatsApp({
+        snapshotOptions: {
+          gameName: 'Recess Social Arcade',
+          headline: `${creatorName} invites you to play!`,
+          statusBadge: 'WHATSAPP MINI-APP MATCH',
+          playerOne: {
+            name: creatorName,
+            score: 1420,
+            isCurrentTurn: true,
+          },
+          playerTwo: {
+            name: 'Friend',
+            score: 1200,
+            isCurrentTurn: false,
+          },
+        },
+        shareTitle: 'Recess Studio — Casual Social Gaming on WhatsApp',
+        shareText: `🎮 ${creatorName} invited you to play casual arcade games on Recess!\n\nTap to join in your browser (no app required):\n${resolvedUrl}`,
+        shareUrl: resolvedUrl,
+        fallbackUrl: fallbackWaLink,
+      });
+    } finally {
+      setIsSharing(false);
+    }
+  };
 
   return (
     <div
       aria-label="WhatsApp Invitation Panel"
-      className={`rounded-2xl p-5 ${
-        isDark
-          ? 'border border-white/10 bg-[#161D2F] text-white shadow-xl'
-          : 'border border-recess-cream-border bg-white text-recess-text-primary shadow-card'
-      }`}
+      className="relative overflow-hidden rounded-3xl border border-emerald-500/20 bg-gradient-to-b from-[#1F2C34]/95 via-[#0B141A]/95 to-[#05070B]/95 p-5 text-white shadow-2xl backdrop-blur-2xl"
     >
+      {/* Subtle ambient green glow */}
+      <div className="pointer-events-none absolute -top-12 -right-12 h-32 w-32 rounded-full bg-[#00A884]/15 blur-2xl" />
+
       <div className="flex items-start gap-3.5">
-        <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 shadow-sm">
+        <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-[#00A884]/20 text-[#00A884] shadow-glow-emerald">
           <img
             src="/assets/shared/icons/icon-whatsapp.svg"
             alt="WhatsApp"
-            className="h-6 w-6 text-emerald-600"
+            className="h-6 w-6"
           />
         </div>
         <div className="min-w-0">
-          <h3
-            className={`text-sm font-bold ${
-              isDark ? 'text-white' : 'text-recess-text-primary'
-            }`}
-          >
-            {title}
-          </h3>
-          <p
-            className={`mt-1 text-xs leading-relaxed ${
-              isDark ? 'text-neutral-400' : 'text-recess-text-secondary'
-            }`}
-          >
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-black text-white">{title}</h3>
+            <span className="rounded-full bg-[#00A884]/20 px-2 py-0.5 text-[9px] font-extrabold uppercase text-[#00A884]">
+              Zero Install
+            </span>
+          </div>
+          <p className="mt-1 text-xs leading-relaxed text-white/60">
             {description}
           </p>
         </div>
       </div>
 
-      <div className="mt-4 flex flex-col sm:flex-row gap-2">
-        {(() => {
-          const isNative = waLink.startsWith('whatsapp://');
-          return (
-            <a
-              href={waLink}
-              target={isNative ? undefined : '_blank'}
-              rel={isNative ? undefined : 'noopener noreferrer'}
-              className="flex-1"
-            >
-              <Button
-                variant="primary"
-                size="md"
-                fullWidth
-                className="!bg-emerald-600 hover:!bg-emerald-500 !border-emerald-500 text-white font-bold"
-              >
-                <span className="flex items-center justify-center gap-2">
-                  <img
-                    src="/assets/shared/icons/icon-whatsapp.svg"
-                    alt=""
-                    className="h-4 w-4 filter invert"
-                  />
-                  Share on WhatsApp
-                </span>
-              </Button>
-            </a>
-          );
-        })()}
-
-        <Button
-          variant={isDark ? 'secondary' : 'secondary'}
-          size="md"
-          onClick={handleCopy}
-          className={isDark ? '!bg-white/10 !text-white !border-white/15' : ''}
+      <div className="mt-4 flex flex-col sm:flex-row gap-2.5">
+        <button
+          type="button"
+          onClick={handleShareToWhatsApp}
+          disabled={isSharing}
+          className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-[#00A884] hover:bg-[#008f6f] px-4 py-2.5 text-xs font-black text-white shadow-glow-emerald transition-all active:scale-95 disabled:opacity-60"
         >
-          {copied ? '✓ Link Copied' : 'Copy Invite Link'}
-        </Button>
+          <img
+            src="/assets/shared/icons/icon-whatsapp.svg"
+            alt=""
+            className="h-4 w-4"
+          />
+          <span>{isSharing ? 'Generating Preview...' : 'Share on WhatsApp'}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="rounded-xl border border-white/10 bg-white/[0.06] hover:bg-white/[0.12] px-4 py-2.5 text-xs font-bold text-white transition-all active:scale-95"
+        >
+          {copied ? '✓ Link Copied' : 'Copy Link'}
+        </button>
       </div>
     </div>
   );

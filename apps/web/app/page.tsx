@@ -8,7 +8,6 @@ export default function HomePage() {
       <div className="mx-auto flex max-w-lg flex-col px-4 py-5 space-y-6 sm:px-6">
         {/* Live Active Turn Ticker, Rivalry Pill & Arcade Greeting */}
         <LobbyHeader
-          username="Chidi"
           rivalUsername="tunde"
           userScore={3}
           rivalScore={2}

@@ -1,6 +1,8 @@
 'use client';
 
 import Link from 'next/link';
+import { useIdentity } from '@/hooks/use-identity';
+import { useLiveStats } from '@/hooks/use-live-stats';
 
 interface LobbyHeaderProps {
   username?: string;
@@ -12,15 +14,37 @@ interface LobbyHeaderProps {
 }
 
 export function LobbyHeader({
-  username = 'Chidi',
+  username,
   rivalUsername = 'tunde',
   userScore = 3,
   rivalScore = 2,
   hasActiveTurn = true,
   activeMatchId = 'wb-demo',
 }: LobbyHeaderProps) {
+  const { profile } = useIdentity();
+  const { stats } = useLiveStats();
+
+  const greetingName = profile?.username
+    ? `@${profile.username}`
+    : username || 'Chidi';
+
+  const onlineCount = stats?.onlineNowCount ?? 1;
+  const registeredCount = stats?.totalRegisteredPlayers ?? 1;
+
   return (
     <section className="space-y-4">
+      {/* Live Platform Telemetry Pill */}
+      <div className="flex items-center justify-between">
+        <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-1.5 text-xs font-bold text-emerald-300 shadow-glow-green backdrop-blur-xl">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+          </span>
+          <span>
+            🟢 {onlineCount} {onlineCount === 1 ? 'Player' : 'Players'} Online • {registeredCount} Registered in Recess
+          </span>
+        </div>
+      </div>
       {/* Top Ticker & Head-to-Head Rivalry Summary Pill */}
       <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
         {/* Live Active Turn Ticker */}
@@ -73,7 +97,7 @@ export function LobbyHeader({
               <span className="text-xs text-white/50">• West Africa Gaming Hub</span>
             </div>
             <h1 className="mt-1.5 text-2xl font-black tracking-tight text-white sm:text-3xl">
-              Welcome to the Lounge, <span className="bg-gradient-to-r from-white via-white to-white/70 bg-clip-text text-transparent">{username}</span>
+              Welcome to the Lounge, <span className="bg-gradient-to-r from-white via-white to-white/70 bg-clip-text text-transparent">{greetingName}</span>
             </h1>
             <p className="mt-1 text-xs text-white/70 sm:text-sm max-w-md">
               Step up to the tables. Challenge friends over WhatsApp or enter the universal matchmaking queues.

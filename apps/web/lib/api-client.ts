@@ -11,7 +11,9 @@ import {
   type ApiErrorBody,
   type AuthUserResponse,
   type GameSessionResponse,
+  type LivePlayerStatsResponse,
   type RegisterResponse,
+  type RegisterUserInput,
 } from '@recess/shared';
 
 /**
@@ -84,14 +86,39 @@ export function toApiClientError(error: unknown): ApiClientError {
   );
 }
 
+export function getApiBaseUrl(): string {
+  if (typeof window !== 'undefined') {
+    // In browser: always use relative same-origin path '/backend-api' proxied by Next.js rewrites.
+    // This completely eliminates CORS, tunnel domain mismatches, and localhost routing errors on mobile.
+    return '/backend-api';
+  }
+  return (
+    process.env.INTERNAL_API_URL ||
+    process.env.API_PROXY_TARGET ||
+    'http://127.0.0.1:4000'
+  );
+}
+
 function createApiClient(): AxiosInstance {
-  return axios.create({
+  const client = axios.create({
     // Same-origin path proxied to apps/api by the Next.js server (see next.config.ts
     // rewrites) — keeps browser traffic same-origin without a CORS plugin on the API.
-    baseURL: '/backend',
+    baseURL: getApiBaseUrl(),
     // A hung request must surface as an error instead of blocking the UI indefinitely.
     timeout: 10_000,
   });
+
+  if (typeof window !== 'undefined') {
+    client.interceptors.request.use((config) => {
+      // Ensure browser requests stay relative to current origin on Cloudflare tunnels
+      if (!config.baseURL || config.baseURL.includes('localhost') || config.baseURL.includes('127.0.0.1')) {
+        config.baseURL = '/backend-api';
+      }
+      return config;
+    });
+  }
+
+  return client;
 }
 
 export const api = createApiClient();
@@ -100,13 +127,42 @@ function authConfig(sessionToken: string) {
   return { headers: { Authorization: `Bearer ${sessionToken}` } };
 }
 
-/** POST /auth/register — creates an account, gaming profile, and session token. */
-export async function registerUser(username: string): Promise<RegisterResponse> {
+/** POST /players/register — creates an account or restores an existing profile by WhatsApp number. */
+export async function registerUser(
+  input: string | RegisterUserInput,
+): Promise<RegisterResponse> {
   try {
-    const { data } = await api.post<RegisterResponse>('/auth/register', { username });
+    const payload: RegisterUserInput =
+      typeof input === 'string' ? { username: input } : input;
+    const { data } = await api.post<RegisterResponse>('/players/register', payload);
     return data;
   } catch (error) {
     throw toApiClientError(error);
+  }
+}
+
+/** GET /players/live-stats — returns live player telemetry and active game match counts. */
+export async function fetchLivePlayerStats(): Promise<LivePlayerStatsResponse> {
+  try {
+    const { data } = await api.get<LivePlayerStatsResponse>('/players/live-stats');
+    return data;
+  } catch (error) {
+    throw toApiClientError(error);
+  }
+}
+
+/** POST /players/heartbeat — records player presence activity. */
+export async function sendPlayerHeartbeat(sessionToken?: string): Promise<boolean> {
+  if (!sessionToken) return false;
+  try {
+    const { data } = await api.post<{ ok: boolean }>(
+      '/players/heartbeat',
+      {},
+      authConfig(sessionToken),
+    );
+    return data.ok;
+  } catch {
+    return false;
   }
 }
 

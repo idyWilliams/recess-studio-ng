@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { GamingProfile } from '@recess/shared';
+import type { GamingProfile, RegisterUserInput } from '@recess/shared';
 
-import { ApiClientError, fetchCurrentUser, registerUser } from '@/lib/api-client';
+import { ApiClientError, fetchCurrentUser, registerUser, sendPlayerHeartbeat } from '@/lib/api-client';
 import {
   clearStoredIdentity,
   loadStoredIdentity,
@@ -37,7 +37,27 @@ export function useIdentity() {
     queryFn: async () => {
       const identity = loadStoredIdentity();
       if (!identity) return null;
-      return fetchCurrentUser(identity.sessionToken);
+      if (identity.sessionToken.startsWith('offline_')) return null;
+      try {
+        const auth = await fetchCurrentUser(identity.sessionToken);
+        if (auth?.profile) {
+          const updated: StoredIdentity = {
+            sessionToken: identity.sessionToken,
+            profile: auth.profile,
+            expiresAt: identity.expiresAt,
+          };
+          storeIdentity(updated);
+          setStored(updated);
+        }
+        return auth;
+      } catch (err) {
+        // Only bubble UNAUTHORIZED so local token is cleared if the server explicitly rejected it;
+        // network/timeout errors on tunnels are handled gracefully without clearing stored identity
+        if (err instanceof ApiClientError && err.code === 'UNAUTHORIZED') {
+          throw err;
+        }
+        return null;
+      }
     },
   });
 
@@ -52,8 +72,20 @@ export function useIdentity() {
     }
   }, [meQuery.error]);
 
+  // Send heartbeat while logged in to maintain live telemetry
+  useEffect(() => {
+    const token = stored?.sessionToken;
+    if (!token || token.startsWith('offline_')) return;
+    void sendPlayerHeartbeat(token);
+    const interval = setInterval(() => {
+      void sendPlayerHeartbeat(token);
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [stored?.sessionToken]);
+
   const register = useMutation({
-    mutationFn: (username: string) => registerUser(username),
+    mutationFn: (input: string | RegisterUserInput) => registerUser(input),
+    retry: false,
     onSuccess: (response) => {
       const identity: StoredIdentity = {
         sessionToken: response.sessionToken,
@@ -64,6 +96,9 @@ export function useIdentity() {
       setStored(identity);
       void queryClient.invalidateQueries({ queryKey: IDENTITY_QUERY_KEY });
     },
+    onError: () => {
+      // Handled gracefully with local identity persistence
+    },
   });
 
   const signOut = useCallback(() => {
@@ -72,10 +107,15 @@ export function useIdentity() {
     queryClient.removeQueries({ queryKey: IDENTITY_QUERY_KEY });
   }, [queryClient]);
 
+  const isWhatsAppConnected = Boolean(
+    stored?.profile?.whatsappVerified || stored?.profile?.maskedWhatsApp,
+  );
+
   return {
     profile: (stored?.profile ?? null) as GamingProfile | null,
     sessionToken: stored?.sessionToken ?? null,
     isVerifying: stored !== null && meQuery.isPending,
+    isWhatsAppConnected,
     register,
     signOut,
   };

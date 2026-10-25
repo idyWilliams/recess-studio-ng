@@ -2,13 +2,13 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useLiveStats } from '@/hooks/use-live-stats';
 
 interface GameItem {
-  id: string;
+  id: 'word-battle' | 'mancala' | 'whot' | 'ludo';
   title: string;
   tagline: string;
   badge: { text: string; color: string; bg: string; border: string; glow?: string };
-  players: string;
   matchType: string;
   bannerUrl: string;
   href: string;
@@ -28,7 +28,6 @@ const ARCADE_GAMES: GameItem[] = [
       border: 'border-emerald-500/40',
       glow: 'shadow-glow-green',
     },
-    players: '2,480 Active',
     matchType: '1v1 Duel • 5 Rounds',
     bannerUrl: '/assets/games/banners/word-battle.svg',
     href: '/games/word-battle',
@@ -46,10 +45,9 @@ const ARCADE_GAMES: GameItem[] = [
       border: 'border-amber-500/40',
       glow: 'shadow-glow-gold',
     },
-    players: '1,920 Active',
     matchType: '1v1 Strategy • 14 Pits',
     bannerUrl: '/assets/games/banners/mancala-royale.svg',
-    href: '/games/mancala',
+    href: '/games/word-battle?mode=mancala',
     isAvailable: true,
     accentGradient: 'from-amber-500 to-emerald-600',
   },
@@ -63,7 +61,6 @@ const ARCADE_GAMES: GameItem[] = [
       bg: 'bg-rose-500/20',
       border: 'border-rose-500/40',
     },
-    players: '3,150 Waiting',
     matchType: '2–4 Players • Card Hand',
     bannerUrl: '/assets/games/banners/whot.svg',
     href: '#whot-waitlist',
@@ -80,7 +77,6 @@ const ARCADE_GAMES: GameItem[] = [
       bg: 'bg-blue-500/20',
       border: 'border-blue-500/40',
     },
-    players: '4,820 Waiting',
     matchType: '4 Players • Board Race',
     bannerUrl: '/assets/games/banners/ludo.svg',
     href: '#ludo-waitlist',
@@ -91,10 +87,22 @@ const ARCADE_GAMES: GameItem[] = [
 
 export function ArcadeBentoGrid() {
   const [notifiedGame, setNotifiedGame] = useState<string | null>(null);
+  const { stats } = useLiveStats();
 
   const handleNotify = (gameId: string) => {
     setNotifiedGame(gameId);
     setTimeout(() => setNotifiedGame(null), 3000);
+  };
+
+  const getGamePlayerCount = (gameId: 'word-battle' | 'mancala' | 'whot' | 'ludo') => {
+    if (!stats) return 'Live';
+    const count = stats.perGameCounts[gameId] ?? 0;
+    if (gameId === 'word-battle' || gameId === 'mancala') {
+      const activeCount = count > 0 ? count : (stats.onlineNowCount || 1);
+      return `${activeCount.toLocaleString()} Active`;
+    }
+    const waitingCount = count > 0 ? count : stats.totalRegisteredPlayers;
+    return `${waitingCount.toLocaleString()} Waiting`;
   };
 
   return (
@@ -107,7 +115,7 @@ export function ArcadeBentoGrid() {
           <h2 className="text-lg font-black text-white">Select Your Arena</h2>
         </div>
         <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[11px] font-semibold text-white/60">
-          4 Games Available
+          {stats ? `${stats.activeMatchesCount} Matches • ${stats.totalRegisteredPlayers} Registered` : '4 Games Available'}
         </span>
       </div>
 
@@ -158,7 +166,7 @@ export function ArcadeBentoGrid() {
                       {game.title}
                     </h3>
                     <span className="text-[11px] font-semibold text-white/50">
-                      👥 {game.players}
+                      👥 {getGamePlayerCount(game.id)}
                     </span>
                   </div>
 

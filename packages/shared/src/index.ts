@@ -1,12 +1,16 @@
 export { ApiErrorCode, type ApiErrorBody } from './errors.js';
 export {
   createGamingProfileSchema,
+  maskWhatsAppNumber,
+  normalizeWhatsAppNumber,
   registerUserSchema,
   updateGamingProfileSchema,
   USERNAME_REGEX,
   type AuthUserResponse,
   type CreateGamingProfileInput,
   type GamingProfile,
+  type LivePlayerStatsResponse,
+  type PublicPlayerProfile,
   type RegisterResponse,
   type RegisterUserInput,
   type UpdateGamingProfileInput,
