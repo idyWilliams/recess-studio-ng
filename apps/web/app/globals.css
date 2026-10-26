@@ -7,14 +7,40 @@
   --font-recess:
     -apple-system, BlinkMacSystemFont, 'Plus Jakarta Sans', 'Inter', 'Segoe UI', Roboto,
     sans-serif;
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
+html,
+body {
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
   font-family: var(--font-recess);
   @apply min-h-dvh bg-[#05070B] text-white antialiased;
   -webkit-font-smoothing: antialiased;
-  -webkit-tap-highlight-color: transparent;
   background-color: #05070B;
+}
+
+/* Prevent accidental text selection and long-press callouts on game chrome and buttons */
+button,
+a,
+[role='button'],
+.arcade-interactive {
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+/* Ensure inputs and text areas remain selectable */
+input,
+textarea,
+[contenteditable='true'] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* Atmospheric mesh gradient background overlay */

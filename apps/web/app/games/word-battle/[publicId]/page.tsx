@@ -45,6 +45,8 @@ import { WaitingRoom } from '@/components/games/word-battle/WaitingRoom';
 import { WordBar } from '@/components/games/word-battle/WordBar';
 import { WordHistoryList } from '@/components/games/word-battle/WordHistoryList';
 import { RegisterCard } from '@/components/identity/RegisterCard';
+import { notifyTurnReady, updateAppBadge, clearAppBadge } from '@/lib/pwa-engine';
+import { triggerHaptic } from '@/lib/haptics';
 
 /**
  * Word Battle arena — the live match orchestrator for one session. All state comes
@@ -167,6 +169,44 @@ export default function WordBattleArenaPage() {
     }
   }, [rematchPublicId, router]);
 
+  // ── PWA Turn Badging & OS Lock-Screen Notifications ────────────────────
+  const prevMyTurnRef = useRef<boolean>(false);
+  useEffect(() => {
+    const isNowMyTurn = Boolean(myTurn);
+    const wasMyTurn = prevMyTurnRef.current;
+    prevMyTurnRef.current = isNowMyTurn;
+
+    // Update app badge: 1 for active turn waiting, 0 when not player's turn
+    void updateAppBadge(isNowMyTurn ? 1 : 0);
+
+    // If turn switched from opponent to this player
+    if (!wasMyTurn && isNowMyTurn) {
+      triggerHaptic('success');
+
+      // Dispatch OS notification if window is backgrounded/hidden
+      const isBackgrounded =
+        typeof document !== 'undefined' && document.visibilityState === 'hidden';
+
+      if (isBackgrounded) {
+        void notifyTurnReady({
+          title: '⚔️ Your Turn in Word Battle!',
+          body: opponentName
+            ? `@${opponentName} has played. Tap to resume your turn in fullscreen!`
+            : 'It is your turn! Tap to play in fullscreen.',
+          matchUrl: `/games/word-battle/${publicId}`,
+          tag: `turn-${publicId}`,
+        });
+      }
+    }
+  }, [myTurn, opponentName, publicId]);
+
+  // Clear badge when leaving the match
+  useEffect(() => {
+    return () => {
+      void clearAppBadge();
+    };
+  }, []);
+
   // ── Turn expiry request (display-only countdown → server-verified call) ─
   // Fired at most once per observed state version; the server rejects premature or
   // already-handled requests (409 TURN_NOT_EXPIRED / STALE_GAME_STATE), which the
@@ -194,8 +234,10 @@ export default function WordBattleArenaPage() {
       setSelectedTileIds((previous) => {
         // Tap the last tile again = undo it.
         if (previous[previous.length - 1] === tile.id) {
+          triggerHaptic('medium');
           return previous.slice(0, -1);
         }
+        triggerHaptic('light');
         return [...previous, tile.id];
       });
       setFeedback(null);
@@ -204,6 +246,7 @@ export default function WordBattleArenaPage() {
   );
 
   const handleClear = useCallback(() => {
+    triggerHaptic('medium');
     setSelectedTileIds([]);
     setFeedback(null);
   }, []);
@@ -408,11 +451,16 @@ export default function WordBattleArenaPage() {
           if (moveFeedback) {
             setFeedback(moveFeedback);
             setFlash(moveFeedback.type === 'invalid' ? 'invalid' : 'valid');
+            triggerHaptic(moveFeedback.type === 'invalid' ? 'warning' : 'success');
           } else {
             setFeedback({ type: 'info', message: 'Move recorded.' });
+            triggerHaptic('success');
           }
         },
-        onError: (error) => handleMoveError(error, submittedVersion),
+        onError: (error) => {
+          triggerHaptic('warning');
+          handleMoveError(error, submittedVersion);
+        },
       },
     );
   }, [

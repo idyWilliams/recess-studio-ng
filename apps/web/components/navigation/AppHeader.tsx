@@ -14,6 +14,17 @@ import {
 } from '@/lib/wallet-store';
 import { useIdentity } from '@/hooks/use-identity';
 import { detectMobileBrowser, type MobileBrowserType } from '@/lib/browser-detect';
+import {
+  initInstallPromptListener,
+  onInstallPromptChange,
+  canPromptNativeInstall,
+  triggerNativeInstall,
+  registerRecessServiceWorker,
+  getNotificationPermission,
+  requestNotificationPermission,
+  notifyTurnReady,
+} from '@/lib/pwa-engine';
+import { triggerHaptic } from '@/lib/haptics';
 
 export { detectMobileBrowser, type MobileBrowserType };
 
@@ -42,12 +53,21 @@ export function AppHeader() {
   const [isFromWhatsApp, setIsFromWhatsApp] = useState(false);
   const [mobileBrowser, setMobileBrowser] = useState<MobileBrowserType>('desktop');
   const [activeMatchLink, setActiveMatchLink] = useState<string | null>(null);
+  const [canNativeInstall, setCanNativeInstall] = useState(false);
+  const [notificationPerm, setNotificationPerm] = useState<NotificationPermission | 'unsupported'>('default');
 
   useEffect(() => {
     setWallet(loadStoredWallet());
     setCustomization(loadStoredCustomization());
 
     if (typeof window !== 'undefined') {
+      void registerRecessServiceWorker();
+      const cleanupPrompt = initInstallPromptListener();
+      const cleanupChange = onInstallPromptChange((canInstall) => {
+        setCanNativeInstall(canInstall);
+      });
+      setNotificationPerm(getNotificationPermission());
+
       const standalone =
         window.matchMedia('(display-mode: standalone)').matches ||
         (window.navigator as unknown as { standalone?: boolean }).standalone === true;
@@ -71,8 +91,39 @@ export function AppHeader() {
       if (storedMatch) {
         setActiveMatchLink(storedMatch);
       }
+
+      return () => {
+        cleanupPrompt();
+        cleanupChange();
+      };
     }
   }, []);
+
+  const handleInstallClick = async () => {
+    triggerHaptic('selection');
+    if (canPromptNativeInstall()) {
+      const outcome = await triggerNativeInstall();
+      if (outcome === 'accepted') {
+        return;
+      }
+    }
+    setIsDockModalOpen(true);
+  };
+
+  const handleAlertsToggle = async () => {
+    triggerHaptic('medium');
+    const perm = await requestNotificationPermission();
+    setNotificationPerm(perm);
+    if (perm === 'granted') {
+      triggerHaptic('success');
+      await notifyTurnReady({
+        title: '🔔 Recess Turn Alerts Active!',
+        body: 'You will receive instant lock-screen alerts when opponents make a move.',
+        matchUrl: '/',
+        tag: 'recess-welcome-alert',
+      });
+    }
+  };
 
   // Auto-prompt onboarding once if WhatsApp is not yet connected
   useEffect(() => {
@@ -118,7 +169,7 @@ export function AppHeader() {
         </aside>
       )}
 
-      <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-[#05070B]/80 backdrop-blur-2xl">
+      <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-[#05070B]/80 backdrop-blur-2xl pt-[env(safe-area-inset-top,0px)]">
         <div className="mx-auto flex max-w-lg items-center justify-between px-4 py-3 sm:px-6">
           {/* Logo */}
           <Link
@@ -156,16 +207,47 @@ export function AppHeader() {
               </a>
             )}
 
-            {/* Dock Mini-App Prompt on Mobile Web */}
+            {/* When NOT installed in standalone mode: Dock / Install App */}
             {!isStandalone && (
               <button
                 type="button"
-                onClick={() => setIsDockModalOpen(true)}
+                onClick={handleInstallClick}
                 className="flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/15 hover:bg-emerald-500/25 px-2.5 py-1 text-[11px] font-bold text-emerald-300 transition-all active:scale-95"
-                aria-label="Dock as Fullscreen Mini-App"
+                aria-label={canNativeInstall ? 'Install Recess App' : 'Dock as Fullscreen Mini-App'}
               >
                 <span>📲</span>
-                <span className="hidden xs:inline">Dock App</span>
+                <span className="hidden xs:inline">
+                  {canNativeInstall ? 'Install App' : 'Dock App'}
+                </span>
+              </button>
+            )}
+
+            {/* When installed in Home Screen PWA: OS Lock-Screen Turn Alerts Toggle */}
+            {isStandalone && (
+              <button
+                type="button"
+                onClick={handleAlertsToggle}
+                className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold transition-all active:scale-95 ${
+                  notificationPerm === 'granted'
+                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 shadow-glow-green'
+                    : 'border-amber-500/30 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300'
+                }`}
+                aria-label="Toggle Turn Notifications"
+              >
+                {notificationPerm === 'granted' ? (
+                  <>
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                    </span>
+                    <span className="hidden xs:inline">Alerts On</span>
+                  </>
+                ) : (
+                  <>
+                    <span>🔔</span>
+                    <span className="hidden xs:inline">Turn Alerts</span>
+                  </>
+                )}
               </button>
             )}
 
@@ -225,6 +307,17 @@ export function AppHeader() {
                 ✕
               </button>
             </div>
+
+            {canNativeInstall && (
+              <button
+                type="button"
+                onClick={handleInstallClick}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-recess-blue py-3 text-xs font-black text-white shadow-glow-emerald transition-all active:scale-95"
+              >
+                <span>⚡</span>
+                <span>1-Tap Install Recess App</span>
+              </button>
+            )}
 
             <p className="text-xs text-white/70 leading-relaxed">
               Remove the browser URL and navigation bars for 100% fullscreen WhatsApp Mini-App gaming:
