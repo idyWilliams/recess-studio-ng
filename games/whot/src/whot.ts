@@ -7,12 +7,15 @@ import type {
 
 import { WHOT_GAME_ID, whotMeta } from './meta.js';
 import {
+  DEFAULT_WHOT_HOUSE_RULES,
   INITIAL_HAND_SIZE,
   WHOT_DECK_SPEC,
   type ProjectedWhotPlayer,
   type ProjectedWhotState,
   type WhotCard,
+  type WhotConfigureRulesMove,
   type WhotDeclaredSuit,
+  type WhotHouseRules,
   type WhotMove,
   type WhotPlayMove,
   type WhotResult,
@@ -34,13 +37,16 @@ export function mulberry32(seed: number, step: number): number {
 }
 
 /**
- * Generates the full 54-card Naija Whot deck.
+ * Generates the full 54-card Naija Whot deck (or 49 cards when 20s are excluded).
  */
-export function generateWhotDeck(): WhotCard[] {
+export function generateWhotDeck(excludeWhot20: boolean = false): WhotCard[] {
   const deck: WhotCard[] = [];
   const suits = Object.keys(WHOT_DECK_SPEC) as WhotSuit[];
 
   for (const suit of suits) {
+    if (excludeWhot20 && suit === 'whot') {
+      continue;
+    }
     const numbers = WHOT_DECK_SPEC[suit];
     numbers.forEach((num, idx) => {
       deck.push({
@@ -103,7 +109,7 @@ export class WhotRulesEngine implements GameCartridge<WhotState, WhotMove, WhotR
 
   createInitialState(
     contextOrPlayers: GamePlayer[] | GameInitContext,
-    options?: { seed?: number; [key: string]: unknown },
+    options?: { seed?: number; houseRules?: Partial<WhotHouseRules>; [key: string]: unknown },
   ): WhotState {
     const players = Array.isArray(contextOrPlayers)
       ? contextOrPlayers
@@ -118,7 +124,12 @@ export class WhotRulesEngine implements GameCartridge<WhotState, WhotMove, WhotR
       options?.seed ||
       1337;
 
-    const baseDeck = generateWhotDeck();
+    const houseRules: WhotHouseRules = {
+      ...DEFAULT_WHOT_HOUSE_RULES,
+      ...(options?.houseRules as Partial<WhotHouseRules> | undefined),
+    };
+
+    const baseDeck = generateWhotDeck(houseRules.excludeWhot20);
     const { shuffled, nextStep } = shuffleDeck(baseDeck, seed, 0);
 
     const hands: Record<string, WhotCard[]> = {};
@@ -150,6 +161,8 @@ export class WhotRulesEngine implements GameCartridge<WhotState, WhotMove, WhotR
       pendingDrawCount: 0,
       turnCount: 0,
       history: [],
+      houseRules,
+      lastActionDescription: 'Match started.',
       isGameOver: false,
       rngSeed: seed,
       rngStep: nextStep,
@@ -184,6 +197,18 @@ export class WhotRulesEngine implements GameCartridge<WhotState, WhotMove, WhotR
         reason: 'INVALID_MOVE',
         message: 'Move payload must be an object',
       };
+    }
+
+    // Configure house rules before match starts
+    if (move.type === 'configure_rules') {
+      if (state.turnCount > 0) {
+        return {
+          ok: false,
+          reason: 'INVALID_MOVE',
+          message: 'House rules can only be configured before the first move',
+        };
+      }
+      return { ok: true };
     }
 
     // Timeout forfeiture
@@ -224,14 +249,39 @@ export class WhotRulesEngine implements GameCartridge<WhotState, WhotMove, WhotR
       };
     }
 
-    // Pending penalty defense check (e.g. Pick Two)
+    const houseRules: WhotHouseRules = {
+      ...DEFAULT_WHOT_HOUSE_RULES,
+      ...(state.houseRules ?? {}),
+    };
+
+    // Pending penalty defense check (e.g. Pick Two, Pick Three, Street Seven)
     if (state.pendingDrawCount > 0) {
-      // Under pending penalty, only another Card 2 can defend!
-      if (card.number !== 2) {
+      if (!houseRules.allowPenaltyStacking) {
         return {
           ok: false,
           reason: 'INVALID_MOVE',
-          message: `Cannot play non-2 card while ${state.pendingDrawCount} cards are pending. You must defend with a 2 or draw from market.`,
+          message: `Penalty stacking is disabled. You must draw ${state.pendingDrawCount} cards from market.`,
+        };
+      }
+      const topDiscard = state.discardPile.length > 0 ? state.discardPile[state.discardPile.length - 1] : null;
+      const penaltyCardNum = state.lastPenaltyCardNumber ?? topDiscard?.number;
+
+      let canDefend = false;
+      if (penaltyCardNum === 2) {
+        canDefend = (card.number === 2 && houseRules.rule2PickTwo) || (card.number === 7 && houseRules.rule7Variant === 'pick_two');
+      } else if (penaltyCardNum === 5) {
+        canDefend = card.number === 5 && houseRules.rule5PickThree;
+      } else if (penaltyCardNum === 7 && houseRules.rule7Variant === 'pick_two') {
+        canDefend = (card.number === 7 && houseRules.rule7Variant === 'pick_two') || (card.number === 2 && houseRules.rule2PickTwo);
+      } else {
+        canDefend = (card.number === 2 && houseRules.rule2PickTwo) || (card.number === 5 && houseRules.rule5PickThree);
+      }
+
+      if (!canDefend) {
+        return {
+          ok: false,
+          reason: 'INVALID_MOVE',
+          message: `Cannot play non-penalty card while ${state.pendingDrawCount} cards are pending. You must defend with a matching penalty card or draw from market.`,
         };
       }
       return { ok: true };
@@ -239,6 +289,13 @@ export class WhotRulesEngine implements GameCartridge<WhotState, WhotMove, WhotR
 
     // Wild Whot 20 card
     if (card.suit === 'whot' || card.number === 20) {
+      if (houseRules.excludeWhot20) {
+        return {
+          ok: false,
+          reason: 'INVALID_MOVE',
+          message: 'Card 20 (Whot) is excluded by active house rules',
+        };
+      }
       if (!playMove.declaredSuit) {
         return {
           ok: false,
@@ -290,16 +347,51 @@ export class WhotRulesEngine implements GameCartridge<WhotState, WhotMove, WhotR
       stockPile: [...state.stockPile],
       discardPile: [...state.discardPile],
       history: [...state.history],
+      houseRules: {
+        ...DEFAULT_WHOT_HOUSE_RULES,
+        ...(state.houseRules ?? {}),
+      },
       rngSeed: seed ?? state.rngSeed ?? 1337,
       rngStep: state.rngStep ?? 0,
     };
 
+    // Configure rules move
+    if (move.type === 'configure_rules') {
+      const configMove = move as WhotConfigureRulesMove;
+      const updatedRules: WhotHouseRules = {
+        ...s.houseRules,
+        ...configMove.houseRules,
+      };
+      s.houseRules = updatedRules;
+      if (s.houseRules.excludeWhot20) {
+        for (const p of s.players) {
+          s.hands[p.id] = (s.hands[p.id] ?? []).filter((c) => c.number !== 20 && c.suit !== 'whot');
+        }
+        s.stockPile = s.stockPile.filter((c) => c.number !== 20 && c.suit !== 'whot');
+        s.discardPile = s.discardPile.filter((c) => c.number !== 20 && c.suit !== 'whot');
+        if (s.activeNumber === 20) {
+          const top = s.discardPile[s.discardPile.length - 1];
+          if (top) {
+            s.activeNumber = top.number;
+            s.activeSuit = top.suit as WhotDeclaredSuit;
+          } else {
+            s.activeNumber = 1;
+            s.activeSuit = 'circle';
+          }
+        }
+      }
+      s.lastActionDescription = 'House rules updated.';
+      return s;
+    }
+
     // Timeout move
     if (move.type === 'timeout') {
       s.isGameOver = true;
+      s.lastActionDescription = 'Match forfeited via turn timeout.';
       s.history.push({
         playerId,
         moveType: 'timeout',
+        callout: 'Turn timed out.',
         timestampMs: nowMs,
       });
       return s;
@@ -309,14 +401,22 @@ export class WhotRulesEngine implements GameCartridge<WhotState, WhotMove, WhotR
     if (move.type === 'draw') {
       const drawCount = s.pendingDrawCount > 0 ? s.pendingDrawCount : 1;
       s.pendingDrawCount = 0;
+      s.lastPenaltyCardNumber = undefined;
 
       const drawnCards = this.drawFromStock(s, drawCount);
       s.hands[playerId] = [...(s.hands[playerId] ?? []), ...drawnCards];
 
+      const pName = s.players.find((p) => p.id === playerId)?.displayName ?? 'Player';
+      const drawDesc = drawCount > 1
+        ? `⚡ ${pName} drew ${drawnCards.length} penalty cards from market.`
+        : `${pName} drew a card from market.`;
+
+      s.lastActionDescription = drawDesc;
       s.history.push({
         playerId,
         moveType: 'draw',
         drawnCardsCount: drawnCards.length,
+        callout: drawDesc,
         timestampMs: nowMs,
       });
 
@@ -347,14 +447,27 @@ export class WhotRulesEngine implements GameCartridge<WhotState, WhotMove, WhotR
       s.activeSuit = card.suit as WhotDeclaredSuit;
       s.activeNumber = card.number;
 
-      if (card.number === 1) {
+      if (card.number === 1 && s.houseRules.rule1HoldOn) {
         specialAction = 'hold_on';
-      } else if (card.number === 2) {
+      } else if (card.number === 2 && s.houseRules.rule2PickTwo) {
         specialAction = 'pick_two';
         s.pendingDrawCount += 2;
-      } else if (card.number === 8) {
+        s.lastPenaltyCardNumber = 2;
+      } else if (card.number === 5 && s.houseRules.rule5PickThree) {
+        specialAction = 'pick_three';
+        s.pendingDrawCount += 3;
+        s.lastPenaltyCardNumber = 5;
+      } else if (card.number === 7) {
+        if (s.houseRules.rule7Variant === 'pick_two') {
+          specialAction = 'pick_two';
+          s.pendingDrawCount += 2;
+          s.lastPenaltyCardNumber = 7;
+        } else if (s.houseRules.rule7Variant === 'hold_on') {
+          specialAction = 'hold_on';
+        }
+      } else if (card.number === 8 && s.houseRules.rule8Suspension) {
         specialAction = 'suspension';
-      } else if (card.number === 14) {
+      } else if (card.number === 14 && s.houseRules.rule14GoGen) {
         specialAction = 'general_market';
         // Every other player draws 1 card
         for (const p of s.players) {
@@ -366,21 +479,68 @@ export class WhotRulesEngine implements GameCartridge<WhotState, WhotMove, WhotR
       }
     }
 
+    let cardCallout: string;
+    if (card.number === 14 && s.houseRules.rule14GoGen) {
+      cardCallout = '🛒 GO GEN! General Market — Opponent draws 1!';
+    } else if (card.number === 2 && s.houseRules.rule2PickTwo) {
+      cardCallout = '⚡ PICK TWO! Defend or visit the Market!';
+    } else if (card.number === 5 && s.houseRules.rule5PickThree) {
+      cardCallout = '🔥 PICK THREE! Heavy artillery!';
+    } else if (card.number === 7 && s.houseRules.rule7Variant === 'pick_two') {
+      cardCallout = '💣 STREET SEVEN! Pick Two!';
+    } else if (card.number === 7 && s.houseRules.rule7Variant === 'hold_on') {
+      cardCallout = '✂️ SEVEN CUT! Hold On — Play again!';
+    } else if (card.number === 1 && s.houseRules.rule1HoldOn) {
+      cardCallout = '🛑 HOLD ON! Wait for me!';
+    } else if (card.number === 8 && s.houseRules.rule8Suspension) {
+      cardCallout = '⏭️ SUSPENSION! Hold your peace!';
+    } else if (card.number === 20 || card.suit === 'whot') {
+      cardCallout = `👑 WHOT 20! I need ${s.activeSuit.toUpperCase()}!`;
+    } else {
+      const pName = s.players.find((p) => p.id === playerId)?.displayName ?? 'Player';
+      cardCallout = `${pName} played ${card.suit} ${card.number}`;
+    }
+
+    let callout: string;
+    if (playerHand.length === 0) {
+      if (!s.houseRules.allowWinOnSpecial && (specialAction !== undefined || card.number === 20)) {
+        // Cannot check up on power card! Force draw 1 penalty card
+        const penaltyDrawn = this.drawFromStock(s, 1);
+        playerHand.push(...penaltyDrawn);
+        s.hands[playerId] = playerHand;
+        callout = '⚠️ Cannot check up on a power card! +1 Market card';
+      } else {
+        s.isGameOver = true;
+        callout = '🏆 CHECK UP! Game Over!';
+        s.lastActionDescription = callout;
+        s.history.push({
+          playerId,
+          moveType: 'play',
+          card,
+          declaredSuit: playMove.declaredSuit,
+          specialAction,
+          callout,
+          timestampMs: nowMs,
+        });
+        s.turnCount++;
+        return s;
+      }
+    } else if (playerHand.length === 1) {
+      callout = `${cardCallout} — 🔔 LAST CARD! (Semi-Last Warning)`;
+    } else {
+      callout = cardCallout;
+    }
+
+    s.lastActionDescription = callout;
     s.history.push({
       playerId,
       moveType: 'play',
       card,
       declaredSuit: playMove.declaredSuit,
       specialAction,
+      callout,
       timestampMs: nowMs,
     });
-
-    // Check if player won immediately (Hand empty)
-    if (playerHand.length === 0) {
-      s.isGameOver = true;
-      s.turnCount++;
-      return s;
-    }
 
     // Determine next player based on action cards
     if (specialAction === 'hold_on') {
@@ -439,6 +599,8 @@ export class WhotRulesEngine implements GameCartridge<WhotState, WhotMove, WhotR
       pendingDrawCount: state.pendingDrawCount,
       turnCount: state.turnCount,
       history: state.history,
+      houseRules: state.houseRules ?? DEFAULT_WHOT_HOUSE_RULES,
+      lastActionDescription: state.lastActionDescription,
       isGameOver: state.isGameOver,
       isViewerTurn: viewerPlayerId === state.currentPlayerId,
     };

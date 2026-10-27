@@ -6,12 +6,13 @@ import {
   generateWhotDeck,
   WhotRulesEngine,
 } from './whot.js';
-import type {
-  ProjectedWhotPlayer,
-  ProjectedWhotState,
-  WhotCard,
-  WhotDeclaredSuit,
-  WhotState,
+import {
+  DEFAULT_WHOT_HOUSE_RULES,
+  type ProjectedWhotPlayer,
+  type ProjectedWhotState,
+  type WhotCard,
+  type WhotDeclaredSuit,
+  type WhotState,
 } from './types.js';
 
 const PLAYER_ONE: GamePlayer = { id: 'p1', displayName: 'Chidi' };
@@ -95,6 +96,7 @@ describe('Whot! Naija Classic Engine (@recess/game-whot)', () => {
         pendingDrawCount: 0,
         turnCount: 0,
         history: [],
+        houseRules: { ...DEFAULT_WHOT_HOUSE_RULES },
         isGameOver: false,
       };
     }
@@ -210,6 +212,7 @@ describe('Whot! Naija Classic Engine (@recess/game-whot)', () => {
         pendingDrawCount: 0,
         turnCount: 0,
         history: [],
+        houseRules: { ...DEFAULT_WHOT_HOUSE_RULES },
         isGameOver: false,
       };
 
@@ -240,6 +243,7 @@ describe('Whot! Naija Classic Engine (@recess/game-whot)', () => {
         pendingDrawCount: 0,
         turnCount: 0,
         history: [],
+        houseRules: { ...DEFAULT_WHOT_HOUSE_RULES },
         isGameOver: false,
       };
 
@@ -269,6 +273,7 @@ describe('Whot! Naija Classic Engine (@recess/game-whot)', () => {
         pendingDrawCount: 0,
         turnCount: 0,
         history: [],
+        houseRules: { ...DEFAULT_WHOT_HOUSE_RULES },
         isGameOver: false,
       };
 
@@ -301,6 +306,7 @@ describe('Whot! Naija Classic Engine (@recess/game-whot)', () => {
         pendingDrawCount: 0,
         turnCount: 0,
         history: [],
+        houseRules: { ...DEFAULT_WHOT_HOUSE_RULES },
         isGameOver: false,
       };
 
@@ -327,6 +333,7 @@ describe('Whot! Naija Classic Engine (@recess/game-whot)', () => {
         pendingDrawCount: 0,
         turnCount: 0,
         history: [],
+        houseRules: { ...DEFAULT_WHOT_HOUSE_RULES },
         isGameOver: false,
       };
 
@@ -354,6 +361,7 @@ describe('Whot! Naija Classic Engine (@recess/game-whot)', () => {
         pendingDrawCount: 0,
         turnCount: 0,
         history: [],
+        houseRules: { ...DEFAULT_WHOT_HOUSE_RULES },
         isGameOver: false,
       };
 
@@ -385,6 +393,7 @@ describe('Whot! Naija Classic Engine (@recess/game-whot)', () => {
         pendingDrawCount: 0,
         turnCount: 0,
         history: [],
+        houseRules: { ...DEFAULT_WHOT_HOUSE_RULES },
         isGameOver: false,
       };
 
@@ -438,6 +447,236 @@ describe('Whot! Naija Classic Engine (@recess/game-whot)', () => {
       const emptyState = {} as any;
       const projected = engine.projectPlayerView(emptyState, 'p1');
       expect(projected).toEqual({});
+    });
+  });
+
+  describe('Authentic Naija Whot House Rules', () => {
+    it('removes all 20 cards from deck when excludeWhot20 is true (49 cards total)', () => {
+      const deck = generateWhotDeck(true);
+      expect(deck).toHaveLength(49);
+      expect(deck.some((c) => c.suit === 'whot' || c.number === 20)).toBe(false);
+
+      const state = engine.createInitialState([PLAYER_ONE, PLAYER_TWO], {
+        houseRules: { excludeWhot20: true },
+      });
+      expect(state.houseRules.excludeWhot20).toBe(true);
+      const allCards = [
+        ...state.stockPile,
+        ...state.discardPile,
+        ...state.hands['p1']!,
+        ...state.hands['p2']!,
+      ];
+      expect(allCards).toHaveLength(49);
+      expect(allCards.some((c) => c.suit === 'whot')).toBe(false);
+    });
+
+    it('rule7Variant: pick_two applies a 2-card draw penalty', () => {
+      const state: WhotState = {
+        players: [PLAYER_ONE, PLAYER_TWO],
+        currentPlayerId: 'p1',
+        hands: {
+          p1: [{ id: 'c7', suit: 'circle', number: 7 }, { id: 'extra', suit: 'star', number: 3 }],
+          p2: [{ id: 'p2-1', suit: 'circle', number: 4 }],
+        },
+        stockPile: [
+          { id: 'stk1', suit: 'cross', number: 1 },
+          { id: 'stk2', suit: 'cross', number: 2 },
+        ],
+        discardPile: [{ id: 'top', suit: 'circle', number: 1 }],
+        activeSuit: 'circle',
+        activeNumber: 1,
+        pendingDrawCount: 0,
+        turnCount: 1,
+        history: [],
+        isGameOver: false,
+        houseRules: {
+          excludeWhot20: false,
+          rule14GoGen: true,
+          rule2PickTwo: true,
+          rule5PickThree: true,
+          rule7Variant: 'pick_two',
+          rule1HoldOn: true,
+          rule8Suspension: true,
+          allowPenaltyStacking: true,
+          allowWinOnSpecial: true,
+        },
+      };
+
+      const nextState = engine.applyMove(state, { cardId: 'c7' }, 'p1');
+      expect(nextState.currentPlayerId).toBe('p2');
+      expect(nextState.pendingDrawCount).toBe(2);
+      expect(nextState.history[0]?.specialAction).toBe('pick_two');
+      expect(nextState.lastActionDescription).toContain('STREET SEVEN');
+    });
+
+    it('rule7Variant: hold_on grants an extra turn', () => {
+      const state: WhotState = {
+        players: [PLAYER_ONE, PLAYER_TWO],
+        currentPlayerId: 'p1',
+        hands: {
+          p1: [{ id: 'c7', suit: 'circle', number: 7 }, { id: 'extra', suit: 'star', number: 3 }],
+          p2: [{ id: 'p2-1', suit: 'circle', number: 4 }],
+        },
+        stockPile: [],
+        discardPile: [{ id: 'top', suit: 'circle', number: 1 }],
+        activeSuit: 'circle',
+        activeNumber: 1,
+        pendingDrawCount: 0,
+        turnCount: 1,
+        history: [],
+        isGameOver: false,
+        houseRules: {
+          excludeWhot20: false,
+          rule14GoGen: true,
+          rule2PickTwo: true,
+          rule5PickThree: true,
+          rule7Variant: 'hold_on',
+          rule1HoldOn: true,
+          rule8Suspension: true,
+          allowPenaltyStacking: true,
+          allowWinOnSpecial: true,
+        },
+      };
+
+      const nextState = engine.applyMove(state, { cardId: 'c7' }, 'p1');
+      expect(nextState.currentPlayerId).toBe('p1'); // Turn retained!
+      expect(nextState.history[0]?.specialAction).toBe('hold_on');
+      expect(nextState.lastActionDescription).toContain('SEVEN CUT');
+    });
+
+    it('rule14GoGen: true triggers General Market for opponent', () => {
+      const state: WhotState = {
+        players: [PLAYER_ONE, PLAYER_TWO],
+        currentPlayerId: 'p1',
+        hands: {
+          p1: [{ id: 'c14', suit: 'circle', number: 14 }, { id: 'extra', suit: 'star', number: 3 }],
+          p2: [{ id: 'p2-1', suit: 'circle', number: 4 }],
+        },
+        stockPile: [{ id: 'stk1', suit: 'cross', number: 1 }],
+        discardPile: [{ id: 'top', suit: 'circle', number: 1 }],
+        activeSuit: 'circle',
+        activeNumber: 1,
+        pendingDrawCount: 0,
+        turnCount: 1,
+        history: [],
+        isGameOver: false,
+        houseRules: {
+          excludeWhot20: false,
+          rule14GoGen: true,
+          rule2PickTwo: true,
+          rule5PickThree: true,
+          rule7Variant: 'none',
+          rule1HoldOn: true,
+          rule8Suspension: true,
+          allowPenaltyStacking: true,
+          allowWinOnSpecial: true,
+        },
+      };
+
+      const nextState = engine.applyMove(state, { cardId: 'c14' }, 'p1');
+      expect(nextState.currentPlayerId).toBe('p2');
+      expect(nextState.hands['p2']).toHaveLength(2); // Drew 1 card!
+      expect(nextState.history[0]?.specialAction).toBe('general_market');
+      expect(nextState.lastActionDescription).toContain('GO GEN');
+    });
+
+    it('allowPenaltyStacking: false prevents stacking a 2 on an active Pick Two penalty', () => {
+      const state: WhotState = {
+        players: [PLAYER_ONE, PLAYER_TWO],
+        currentPlayerId: 'p2',
+        hands: {
+          p1: [{ id: 'p1-1', suit: 'star', number: 3 }],
+          p2: [{ id: 't2', suit: 'triangle', number: 2 }],
+        },
+        stockPile: [
+          { id: 'stk1', suit: 'cross', number: 1 },
+          { id: 'stk2', suit: 'cross', number: 2 },
+        ],
+        discardPile: [{ id: 'top', suit: 'circle', number: 2 }],
+        activeSuit: 'circle',
+        activeNumber: 2,
+        pendingDrawCount: 2,
+        turnCount: 2,
+        history: [],
+        isGameOver: false,
+        houseRules: {
+          excludeWhot20: false,
+          rule14GoGen: true,
+          rule2PickTwo: true,
+          rule5PickThree: true,
+          rule7Variant: 'none',
+          rule1HoldOn: true,
+          rule8Suspension: true,
+          allowPenaltyStacking: false, // STACKING FORBIDDEN
+          allowWinOnSpecial: true,
+        },
+      };
+
+      // When stacking is false, trying to defend with card 2 must fail validation
+      const validation = engine.validateMove(state, { cardId: 't2' }, 'p2');
+      expect(validation.ok).toBe(false);
+      if (!validation.ok) {
+        expect(validation.reason).toBe('INVALID_MOVE');
+      }
+
+      // Must draw
+      const drawValidation = engine.validateMove(state, { type: 'draw' }, 'p2');
+      expect(drawValidation.ok).toBe(true);
+    });
+
+    it('allowWinOnSpecial: false prevents checking up on a special card and forces a market draw', () => {
+      const state: WhotState = {
+        players: [PLAYER_ONE, PLAYER_TWO],
+        currentPlayerId: 'p1',
+        hands: {
+          p1: [{ id: 'c2', suit: 'circle', number: 2 }], // Last card is a Pick 2
+          p2: [{ id: 'p2-1', suit: 'circle', number: 4 }],
+        },
+        stockPile: [{ id: 'stk1', suit: 'star', number: 5 }],
+        discardPile: [{ id: 'top', suit: 'circle', number: 1 }],
+        activeSuit: 'circle',
+        activeNumber: 1,
+        pendingDrawCount: 0,
+        turnCount: 3,
+        history: [],
+        isGameOver: false,
+        houseRules: {
+          excludeWhot20: false,
+          rule14GoGen: true,
+          rule2PickTwo: true,
+          rule5PickThree: true,
+          rule7Variant: 'none',
+          rule1HoldOn: true,
+          rule8Suspension: true,
+          allowPenaltyStacking: true,
+          allowWinOnSpecial: false, // FORBID WIN ON SPECIAL
+        },
+      };
+
+      const nextState = engine.applyMove(state, { cardId: 'c2' }, 'p1');
+      expect(nextState.isGameOver).toBe(false); // Game NOT over!
+      expect(nextState.hands['p1']).toHaveLength(1); // Forced to draw 1 card
+      expect(nextState.lastActionDescription).toContain('Cannot check up on a power card');
+    });
+
+    it('supports CONFIGURE_RULES before match begins', () => {
+      const state = engine.createInitialState([PLAYER_ONE, PLAYER_TWO]);
+      expect(state.turnCount).toBe(0);
+
+      const configured = engine.applyMove(
+        state,
+        {
+          type: 'configure_rules',
+          houseRules: {
+            excludeWhot20: true,
+            rule7Variant: 'pick_two',
+          },
+        },
+        'p1',
+      );
+
+      expect(configured.houseRules.excludeWhot20).toBe(true);
+      expect(configured.houseRules.rule7Variant).toBe('pick_two');
     });
   });
 });

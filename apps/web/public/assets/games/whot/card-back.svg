@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300" width="100%" height="100%">
+  <defs>
+    <!-- Card drop shadow & bevel filters -->
+    <filter id="card-shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+    <linearGradient id="maroon-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7A1C24"/>
+      <stop offset="50%" stop-color="#5C1219"/>
+      <stop offset="100%" stop-color="#3B0B10"/>
+    </linearGradient>
+    <linearGradient id="gold-foil" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFE89E"/>
+      <stop offset="35%" stop-color="#D4AF37"/>
+      <stop offset="70%" stop-color="#AA820A"/>
+      <stop offset="100%" stop-color="#F3E5AB"/>
+    </linearGradient>
+    <linearGradient id="inner-border-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#D4AF37" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#F59E0B" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#AA820A" stop-opacity="0.8"/>
+    </linearGradient>
+    <!-- Interlocking Nigerian Geometric Pattern -->
+    <pattern id="naija-lattice" width="24" height="24" patternUnits="userSpaceOnUse">
+      <rect width="24" height="24" fill="#5C1219"/>
+      <!-- Diamond grid -->
+      <path d="M12 0 L24 12 L12 24 L0 12 Z" fill="none" stroke="#3B0B10" stroke-width="1.5"/>
+      <path d="M12 3 L21 12 L12 21 L3 12 Z" fill="#4A0E14" stroke="#D4AF37" stroke-width="0.5" stroke-opacity="0.6"/>
+      <!-- Inner star accent -->
+      <circle cx="12" cy="12" r="1.8" fill="#D4AF37"/>
+      <path d="M12 7 L12 17 M7 12 L17 12" stroke="#AA820A" stroke-width="0.75" stroke-opacity="0.7"/>
+      <!-- Corner quarter diamonds -->
+      <path d="M0 0 L6 0 L0 6 Z" fill="#D4AF37" fill-opacity="0.15"/>
+      <path d="M24 0 L18 0 L24 6 Z" fill="#D4AF37" fill-opacity="0.15"/>
+      <path d="M0 24 L6 24 L0 18 Z" fill="#D4AF37" fill-opacity="0.15"/>
+      <path d="M24 24 L18 24 L24 18 Z" fill="#D4AF37" fill-opacity="0.15"/>
+    </pattern>
+  </defs>
+
+  <!-- Base Card Shell -->
+  <rect x="4" y="4" width="192" height="292" rx="14" ry="14" fill="url(#maroon-grad)" stroke="#1A0406" stroke-width="2"/>
+  
+  <!-- Outer Gold Border -->
+  <rect x="9" y="9" width="182" height="282" rx="10" ry="10" fill="none" stroke="url(#gold-foil)" stroke-width="1.5"/>
+  <rect x="13" y="13" width="174" height="274" rx="8" ry="8" fill="none" stroke="#220508" stroke-width="1"/>
+
+  <!-- Lattice Fill Area -->
+  <rect x="15" y="15" width="170" height="270" rx="7" ry="7" fill="url(#naija-lattice)"/>
+
+  <!-- Corner Adire Geometric Accents -->
+  <!-- Top Left -->
+  <path d="M16 16 L40 16 L16 40 Z" fill="#3B0B10" stroke="url(#gold-foil)" stroke-width="0.8"/>
+  <circle cx="23" cy="23" r="2" fill="#D4AF37"/>
+  <!-- Top Right -->
+  <path d="M184 16 L160 16 L184 40 Z" fill="#3B0B10" stroke="url(#gold-foil)" stroke-width="0.8"/>
+  <circle cx="177" cy="23" r="2" fill="#D4AF37"/>
+  <!-- Bottom Left -->
+  <path d="M16 284 L40 284 L16 260 Z" fill="#3B0B10" stroke="url(#gold-foil)" stroke-width="0.8"/>
+  <circle cx="23" cy="277" r="2" fill="#D4AF37"/>
+  <!-- Bottom Right -->
+  <path d="M184 284 L160 284 L184 260 Z" fill="#3B0B10" stroke="url(#gold-foil)" stroke-width="0.8"/>
+  <circle cx="177" cy="277" r="2" fill="#D4AF37"/>
+
+  <!-- Center Medallion Shield -->
+  <g transform="translate(100, 150)">
+    <!-- Medallion Outer Glow & Rings -->
+    <circle r="46" fill="#3B0B10" stroke="url(#gold-foil)" stroke-width="2.5" filter="url(#card-shadow)"/>
+    <circle r="41" fill="#5C1219" stroke="#AA820A" stroke-width="1" stroke-dasharray="2,3"/>
+    <circle r="36" fill="url(#maroon-grad)" stroke="url(#gold-foil)" stroke-width="1.2"/>
+
+    <!-- Central Royal Whot Naija Crest -->
+    <!-- Crown -->
+    <path d="M-16 -8 L-12 4 L12 4 L16 -8 L6 -2 L0 -14 L-6 -2 Z" fill="url(#gold-foil)" stroke="#1A0406" stroke-width="0.8"/>
+    <circle cx="0" cy="-14" r="1.5" fill="#FFE89E"/>
+    <circle cx="-16" cy="-8" r="1.2" fill="#FFE89E"/>
+    <circle cx="16" cy="-8" r="1.2" fill="#FFE89E"/>
+
+    <!-- WHOT Wordmark -->
+    <text x="0" y="16" font-family="'Impact', 'Arial Black', sans-serif" font-weight="900" font-size="14" fill="url(#gold-foil)" text-anchor="middle" letter-spacing="1.5">WHOT!</text>
+    <text x="0" y="24" font-family="'Helvetica Neue', sans-serif" font-weight="700" font-size="5" fill="#FFE89E" text-anchor="middle" letter-spacing="2">NAIJA CLASSIC</text>
+  </g>
+</svg>

@@ -9,7 +9,7 @@ export interface WhotCard {
   number: number; // 1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14, 20
 }
 
-export type WhotMoveType = 'play' | 'draw' | 'timeout';
+export type WhotMoveType = 'play' | 'draw' | 'timeout' | 'configure_rules';
 
 export interface WhotPlayMove {
   type?: 'play' | undefined;
@@ -25,14 +25,83 @@ export interface WhotTimeoutMove {
   type: 'timeout';
 }
 
-export type WhotMove = WhotPlayMove | WhotDrawMove | WhotTimeoutMove;
+export interface WhotConfigureRulesMove {
+  type: 'configure_rules';
+  houseRules: Partial<WhotHouseRules>;
+}
+
+export type WhotMove = WhotPlayMove | WhotDrawMove | WhotTimeoutMove | WhotConfigureRulesMove;
 
 export type WhotSpecialAction =
-  | 'hold_on' // Card 1
-  | 'pick_two' // Card 2
+  | 'hold_on' // Card 1 (or Card 7 when rule7Variant === 'hold_on')
+  | 'pick_two' // Card 2 (or Card 7 when rule7Variant === 'pick_two')
+  | 'pick_three' // Card 5 (Pick Three)
   | 'suspension' // Card 8
   | 'general_market' // Card 14
   | 'whot'; // Card 20
+
+export interface WhotHouseRules {
+  excludeWhot20: boolean; // Default: false. Removes all five '20' wild cards ("No 20s / Pure Skill")
+  rule14GoGen: boolean; // Default: true. 14 = "Go Gen!" (General Market - opponent draws 1)
+  rule2PickTwo: boolean; // Default: true. 2 = "Pick Two"
+  rule5PickThree: boolean; // Default: true. 5 = "Pick Three"
+  rule7Variant: 'none' | 'pick_two' | 'hold_on'; // Default: 'none'. Street rules: 7 = Pick Two OR 7 = Hold On/Cut!
+  rule1HoldOn: boolean; // Default: true. 1 = "Hold On" (Play again)
+  rule8Suspension: boolean; // Default: true. 8 = "Suspension" (Skip next player)
+  allowPenaltyStacking: boolean; // Default: true ("Bombing": defend Pick 2 with a 2, or Pick 3 with a 5)
+  allowWinOnSpecial: boolean; // Default: true. If false, cannot check up on an action card or 20
+}
+
+export type WhotRulePreset = 'naija_street' | 'pure_no_20' | 'campus_chaos' | 'custom';
+
+export const WHOT_RULE_PRESETS: Record<WhotRulePreset, WhotHouseRules> = {
+  naija_street: {
+    excludeWhot20: false,
+    rule14GoGen: true,
+    rule2PickTwo: true,
+    rule5PickThree: true,
+    rule7Variant: 'none',
+    rule1HoldOn: true,
+    rule8Suspension: true,
+    allowPenaltyStacking: true,
+    allowWinOnSpecial: true,
+  },
+  pure_no_20: {
+    excludeWhot20: true,
+    rule14GoGen: true,
+    rule2PickTwo: true,
+    rule5PickThree: true,
+    rule7Variant: 'pick_two',
+    rule1HoldOn: true,
+    rule8Suspension: true,
+    allowPenaltyStacking: true,
+    allowWinOnSpecial: false,
+  },
+  campus_chaos: {
+    excludeWhot20: false,
+    rule14GoGen: true,
+    rule2PickTwo: true,
+    rule5PickThree: true,
+    rule7Variant: 'pick_two',
+    rule1HoldOn: true,
+    rule8Suspension: true,
+    allowPenaltyStacking: true,
+    allowWinOnSpecial: true,
+  },
+  custom: {
+    excludeWhot20: false,
+    rule14GoGen: true,
+    rule2PickTwo: true,
+    rule5PickThree: true,
+    rule7Variant: 'none',
+    rule1HoldOn: true,
+    rule8Suspension: true,
+    allowPenaltyStacking: true,
+    allowWinOnSpecial: true,
+  },
+};
+
+export const DEFAULT_WHOT_HOUSE_RULES: WhotHouseRules = WHOT_RULE_PRESETS.naija_street;
 
 export interface WhotTurnHistory {
   playerId: string;
@@ -41,6 +110,7 @@ export interface WhotTurnHistory {
   declaredSuit?: WhotDeclaredSuit | undefined;
   drawnCardsCount?: number | undefined;
   specialAction?: WhotSpecialAction | undefined;
+  callout?: string | undefined;
   timestampMs?: number | undefined;
 }
 
@@ -53,8 +123,11 @@ export interface WhotState {
   activeSuit: WhotDeclaredSuit;
   activeNumber: number;
   pendingDrawCount: number;
+  lastPenaltyCardNumber?: number | undefined; // Records which penalty card (2, 5, or 7) triggered pendingDrawCount
   turnCount: number;
   history: WhotTurnHistory[];
+  houseRules: WhotHouseRules;
+  lastActionDescription?: string | undefined;
   isGameOver?: boolean | undefined;
   rngSeed?: number | undefined;
   rngStep?: number | undefined;
@@ -84,6 +157,8 @@ export interface ProjectedWhotState {
   pendingDrawCount: number;
   turnCount: number;
   history: WhotTurnHistory[];
+  houseRules: WhotHouseRules;
+  lastActionDescription?: string | undefined;
   isGameOver?: boolean | undefined;
   isViewerTurn?: boolean | undefined;
 }

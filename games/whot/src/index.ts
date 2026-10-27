@@ -11,6 +11,8 @@ export {
 export {
   INITIAL_HAND_SIZE,
   WHOT_DECK_SPEC,
+  DEFAULT_WHOT_HOUSE_RULES,
+  WHOT_RULE_PRESETS,
 } from './types.js';
 export type {
   ProjectedWhotPlayer,
@@ -27,4 +29,6 @@ export type {
   WhotSuit,
   WhotTimeoutMove,
   WhotTurnHistory,
+  WhotHouseRules,
+  WhotConfigureRulesMove,
 } from './types.js';

@@ -176,14 +176,18 @@ export async function fetchCurrentUser(sessionToken: string): Promise<AuthUserRe
   }
 }
 
-/** POST /game-sessions — creates a waiting Word Battle session (creator takes seat 0). */
-export async function createWordBattleSession(
+export type SupportedGameId = 'word-battle' | 'mancala' | 'whot' | 'ludo';
+
+/** POST /game-sessions — creates a waiting game session for any supported cartridge. */
+export async function createGameSession<TState = unknown, TResult = unknown>(
   sessionToken: string,
-): Promise<WordBattleSession> {
+  gameId: SupportedGameId,
+  config?: Record<string, unknown>,
+): Promise<GameSessionResponse<TState, TResult>> {
   try {
-    const { data } = await api.post<WordBattleSession>(
+    const { data } = await api.post<GameSessionResponse<TState, TResult>>(
       '/game-sessions',
-      { gameId: WORD_BATTLE_GAME_ID },
+      { gameId, config },
       authConfig(sessionToken),
     );
     return data;
@@ -192,10 +196,22 @@ export async function createWordBattleSession(
   }
 }
 
+/** POST /game-sessions — creates a waiting Word Battle session (creator takes seat 0). */
+export async function createWordBattleSession(
+  sessionToken: string,
+): Promise<WordBattleSession> {
+  return createGameSession<WordBattleState, WordBattleResult>(
+    sessionToken,
+    WORD_BATTLE_GAME_ID,
+  );
+}
+
 /** GET /game-sessions/:publicId — public read; lazily reconciles expired turns. */
-export async function fetchGameSession(publicId: string): Promise<WordBattleSession> {
+export async function fetchGameSession<TState = WordBattleState, TResult = WordBattleResult>(
+  publicId: string,
+): Promise<GameSessionResponse<TState, TResult>> {
   try {
-    const { data } = await api.get<WordBattleSession>(
+    const { data } = await api.get<GameSessionResponse<TState, TResult>>(
       `/game-sessions/${publicId}`,
     );
     return data;
@@ -204,13 +220,13 @@ export async function fetchGameSession(publicId: string): Promise<WordBattleSess
   }
 }
 
-/** POST /game-sessions/:publicId/join — joins a waiting session (auto-starts at 2 players). */
-export async function joinGameSession(
+/** POST /game-sessions/:publicId/join — joins a waiting session (auto-starts at minimum players). */
+export async function joinGameSession<TState = WordBattleState, TResult = WordBattleResult>(
   sessionToken: string,
   publicId: string,
-): Promise<WordBattleSession> {
+): Promise<GameSessionResponse<TState, TResult>> {
   try {
-    const { data } = await api.post<WordBattleSession>(
+    const { data } = await api.post<GameSessionResponse<TState, TResult>>(
       `/game-sessions/${publicId}/join`,
       {},
       authConfig(sessionToken),
@@ -223,19 +239,21 @@ export async function joinGameSession(
 
 /**
  * POST /game-sessions/:publicId/moves — submits a move intent with the state version the
- * client observed. The server is authoritative: word-quality failures come back as a 200
- * with a penalty in the session history; version conflicts come back as 409
- * STALE_GAME_STATE. Never retried automatically — a lost response is indistinguishable
- * from an applied move.
+ * client observed. The server is authoritative: moves come back with authoritative state;
+ * version conflicts come back as 409 STALE_GAME_STATE.
  */
-export async function submitGameMove(
+export async function submitGameMove<
+  TMove = unknown,
+  TState = WordBattleState,
+  TResult = WordBattleResult,
+>(
   sessionToken: string,
   publicId: string,
-  move: WordBattleMove,
+  move: TMove,
   expectedStateVersion: number,
-): Promise<WordBattleSession> {
+): Promise<GameSessionResponse<TState, TResult>> {
   try {
-    const { data } = await api.post<WordBattleSession>(
+    const { data } = await api.post<GameSessionResponse<TState, TResult>>(
       `/game-sessions/${publicId}/moves`,
       { move, expectedStateVersion },
       authConfig(sessionToken),
@@ -248,17 +266,18 @@ export async function submitGameMove(
 
 /**
  * POST /game-sessions/:publicId/expire-turn — asks the server to reconcile the current
- * turn against its persisted deadline. The request carries no authority: before the
- * deadline the server answers 409 TURN_NOT_EXPIRED, and if the state already advanced
- * it answers 409 STALE_GAME_STATE. Both are benign for the caller.
+ * turn against its persisted deadline.
  */
-export async function requestTurnExpiry(
+export async function requestTurnExpiry<
+  TState = WordBattleState,
+  TResult = WordBattleResult,
+>(
   sessionToken: string,
   publicId: string,
   expectedStateVersion: number,
-): Promise<WordBattleSession> {
+): Promise<GameSessionResponse<TState, TResult>> {
   try {
-    const { data } = await api.post<WordBattleSession>(
+    const { data } = await api.post<GameSessionResponse<TState, TResult>>(
       `/game-sessions/${publicId}/expire-turn`,
       { expectedStateVersion },
       authConfig(sessionToken),
@@ -270,15 +289,18 @@ export async function requestTurnExpiry(
 }
 
 /**
- * POST /game-sessions/:publicId/rematch — 1-Tap Rematch Handshake (Phase 2).
- * Provisions a fresh match linked to the same two players with the loser taking first turn.
+ * POST /game-sessions/:publicId/rematch — 1-Tap Rematch Handshake.
+ * Provisions a fresh match linked to the same players.
  */
-export async function requestRematch(
+export async function requestRematch<
+  TState = WordBattleState,
+  TResult = WordBattleResult,
+>(
   sessionToken: string,
   publicId: string,
-): Promise<WordBattleSession> {
+): Promise<GameSessionResponse<TState, TResult>> {
   try {
-    const { data } = await api.post<WordBattleSession>(
+    const { data } = await api.post<GameSessionResponse<TState, TResult>>(
       `/game-sessions/${publicId}/rematch`,
       {},
       authConfig(sessionToken),

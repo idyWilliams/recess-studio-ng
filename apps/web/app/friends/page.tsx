@@ -101,12 +101,20 @@ export default function FriendsPage() {
   const handleChallengeFriend = async (friend: FriendEntry) => {
     setChallengingFriend(friend.id);
     const myCustom = loadStoredCustomization();
-    const myName = profile?.username || myCustom.rankTitle || 'Chidi';
+    const myName = profile?.username || 'You';
     const siteUrl =
       typeof window !== 'undefined'
         ? window.location.origin
         : process.env.NEXT_PUBLIC_SITE_URL || 'https://recess.studio';
-    const matchUrl = `${siteUrl}/games/word-battle`;
+    const gameRouteMap: Record<string, string> = {
+      'Word Battle': '/games/word-battle',
+      'Mancala Royale': '/games/mancala',
+      'Whot! Naija': '/games/whot',
+      'Whot! Naija Classic': '/games/whot',
+      'Ludo Arena': '/games/ludo',
+    };
+    const gamePath = gameRouteMap[friend.topGame] || '/games/word-battle';
+    const matchUrl = `${siteUrl}${gamePath}`;
 
     await shareMatchSnapshotToWhatsApp({
       snapshotOptions: {

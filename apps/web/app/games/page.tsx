@@ -40,7 +40,7 @@ const GAMES: GameItem[] = [
     badge: 'Popular • Classic',
     playersLabel: '2 Players • Turn-Based',
     bannerUrl: '/assets/games/banners/mancala-royale.svg',
-    href: '/games/word-battle?mode=mancala',
+    href: '/games/mancala',
     accentColor: '#F59E0B',
   },
   {
@@ -51,7 +51,7 @@ const GAMES: GameItem[] = [
     badge: 'Naija Classic',
     playersLabel: '2–4 Players • Fast-Paced',
     bannerUrl: '/assets/games/banners/whot.svg',
-    href: '/games/word-battle?mode=whot',
+    href: '/games/whot',
     accentColor: '#10B981',
   },
   {
@@ -62,7 +62,7 @@ const GAMES: GameItem[] = [
     badge: 'Multiplayer • Classic',
     playersLabel: '2–4 Players • Board Game',
     bannerUrl: '/assets/games/banners/ludo.svg',
-    href: '/games/word-battle?mode=ludo',
+    href: '/games/ludo',
     accentColor: '#EC4899',
   },
 ];

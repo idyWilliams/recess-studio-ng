@@ -1,8 +1,9 @@
-import type { WordBattleSession } from './api-client';
+import type { GameSessionResponse } from '@recess/shared';
 
 export interface MatchCardData {
   publicId: string;
-  session: WordBattleSession | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  session: GameSessionResponse<any, any> | null;
 }
 
 /**
@@ -10,6 +11,16 @@ export interface MatchCardData {
  * Uses exact inline CSS (Flexbox, gradients, box-shadows) supported by Satori.
  */
 export function MatchPreviewCard({ publicId, session }: MatchCardData) {
+  const gameId = session?.gameId ?? 'word-battle';
+  const gameTitle =
+    gameId === 'whot'
+      ? 'WHOT! NAIJA CLASSIC'
+      : gameId === 'mancala'
+      ? 'MANCALA ROYALE'
+      : gameId === 'ludo'
+      ? 'LUDO ARENA'
+      : 'WORD BATTLE';
+
   const p1 = session?.players[0];
   const p2 = session?.players[1];
 
@@ -19,7 +30,8 @@ export function MatchPreviewCard({ publicId, session }: MatchCardData) {
   const p1Initial = p1Name.charAt(0).toUpperCase();
   const p2Initial = p2 ? p2Name.charAt(0).toUpperCase() : '?';
 
-  const state = session?.state;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const state: any = session?.state;
   const p1Score = (p1 && state?.scores?.[p1.userId]) ?? 0;
   const p2Score = (p2 && state?.scores?.[p2.userId]) ?? 0;
 
@@ -31,24 +43,35 @@ export function MatchPreviewCard({ publicId, session }: MatchCardData) {
   const isCompleted = status === 'completed';
 
   // Last move summary
-  let moveSummary = '⚔️ 15-second turn casual word duel — play directly in WhatsApp';
+  let moveSummary = '⚔️ Casual social duel — play directly in WhatsApp';
   if (isWaiting) {
-    moveSummary = '⏳ Seat open! Tap to join the match and take the opening turn';
+    moveSummary =
+      gameId === 'whot'
+        ? '🎴 Seat open! Tap to join the Naija Whot card battle'
+        : gameId === 'mancala'
+        ? '🪵 Seat open! Tap to join the Ayoayo seed sowing duel'
+        : gameId === 'ludo'
+        ? '🎲 Seats open! Tap to join the 4-player Ludo race'
+        : '⏳ Seat open! Tap to join the match and take the opening turn';
   } else if (isCompleted && session?.result) {
     const winner = session.players.find((p) => p.userId === session.result?.winnerId);
     if (session.result.isDraw) {
-      moveSummary = `🤝 Tie game! Both players scored ${p1Score} pts`;
+      moveSummary = `🤝 Tie game! Both players drew even`;
     } else if (winner) {
-      moveSummary = `🏆 ${winner.username} takes the victory with ${session.result.scores[winner.userId] ?? p1Score} pts!`;
+      moveSummary = `🏆 ${winner.username} takes the victory!`;
     }
+  } else if (state?.lastActionDescription) {
+    moveSummary = state.lastActionDescription;
   } else if (state?.history && state.history.length > 0) {
     const last = state.history[state.history.length - 1];
     if (last) {
       const actor = session?.players.find((p) => p.userId === last.playerId)?.username ?? 'Player';
       if (last.penalty) {
         moveSummary = `⚠️ ${actor}: ${last.penalty === 'TIMEOUT' ? 'Time ran out' : 'Penalty'} (−1 life)`;
-      } else {
+      } else if (last.word) {
         moveSummary = `⚡ ${actor} played "${last.word}" (+${last.score} pts)`;
+      } else if (last.callout) {
+        moveSummary = last.callout;
       }
     }
   }
@@ -63,6 +86,15 @@ export function MatchPreviewCard({ publicId, session }: MatchCardData) {
     statusBadge = 'FINAL RECAP';
     statusBadgeColor = '#8B5CF6';
   }
+
+  const headerGradient =
+    gameId === 'whot'
+      ? 'linear-gradient(135deg, #7A1C24 0%, #D97706 100%)'
+      : gameId === 'mancala'
+      ? 'linear-gradient(135deg, #92400E 0%, #059669 100%)'
+      : gameId === 'ludo'
+      ? 'linear-gradient(135deg, #DC2626 0%, #2563EB 100%)'
+      : 'linear-gradient(135deg, #6C38FF 0%, #1B76FF 100%)';
 
   return (
     <div
@@ -101,7 +133,7 @@ export function MatchPreviewCard({ publicId, session }: MatchCardData) {
               width: '40px',
               height: '40px',
               borderRadius: '10px',
-              background: 'linear-gradient(135deg, #6C38FF 0%, #1B76FF 100%)',
+              background: headerGradient,
               fontWeight: '900',
               fontSize: '20px',
             }}
@@ -121,7 +153,7 @@ export function MatchPreviewCard({ publicId, session }: MatchCardData) {
               RECESS STUDIO
             </span>
             <span style={{ fontSize: '22px', fontWeight: '800', color: '#FFFFFF' }}>
-              WORD BATTLE
+              {gameTitle}
             </span>
           </div>
         </div>
