@@ -75,7 +75,7 @@ export default function GamesPage() {
   const handleShare = async (game: GameItem) => {
     setSharingGame(game.id);
     const myCustom = loadStoredCustomization();
-    const myName = profile?.username || myCustom.rankTitle || 'Chidi';
+    const myName = profile?.username || myCustom.rankTitle || 'Player';
     const siteUrl =
       typeof window !== 'undefined'
         ? window.location.origin
@@ -89,7 +89,7 @@ export default function GamesPage() {
         statusBadge: 'CASUAL SOCIAL MATCH',
         playerOne: {
           name: myName,
-          score: myCustom.elo || 1420,
+          score: myCustom.elo || 1200,
           isCurrentTurn: true,
         },
         playerTwo: {
@@ -115,10 +115,10 @@ export default function GamesPage() {
       <header className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-recess-purple/20 text-xs shadow-glow-purple">
+            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-xs text-emerald-400">
               🎮
             </span>
-            <span className="text-[11px] font-black uppercase tracking-widest text-recess-purple-light">
+            <span className="text-[11px] font-black uppercase tracking-widest text-emerald-400">
               Recess Arcade Cartridges
             </span>
           </div>
@@ -142,7 +142,7 @@ export default function GamesPage() {
         {GAMES.map((game) => (
           <div
             key={game.id}
-            className="group relative overflow-hidden rounded-3xl border border-white/[0.08] bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.06] p-4 backdrop-blur-2xl transition-all shadow-xl"
+            className="group relative overflow-hidden rounded-3xl border border-white/[0.08] bg-[#12171D] hover:border-white/20 hover:bg-[#181F27] p-4 backdrop-blur-2xl transition-all shadow-xl"
           >
             {/* Top SVG Banner */}
             <div className="relative h-32 w-full overflow-hidden rounded-2xl bg-black/40 border border-white/5">
@@ -181,7 +181,7 @@ export default function GamesPage() {
             <div className="mt-4 flex items-center gap-2 pt-2 border-t border-white/10">
               <Link
                 href={game.href}
-                className="flex-1 rounded-xl bg-gradient-to-r from-recess-purple to-recess-blue hover:from-recess-purple-hover hover:to-recess-blue/90 py-2.5 text-center text-xs font-black text-white shadow-glow-purple transition-all active:scale-95"
+                className="flex-1 rounded-xl bg-[#00A884] hover:bg-[#008f6f] py-2.5 text-center text-xs font-black text-[#06130F] shadow-glow-green transition-all active:scale-95"
               >
                 Play Now ⚔️
               </Link>

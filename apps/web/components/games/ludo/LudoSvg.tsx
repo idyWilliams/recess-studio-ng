@@ -110,62 +110,94 @@ export const LudoDiceSvg: React.FC<{
   canRoll?: boolean;
   onRoll?: () => void;
   size?: number;
-}> = ({ value, isRolling = false, canRoll = false, onRoll, size = 64 }) => {
+}> = ({ value, isRolling = false, canRoll = false, onRoll, size = 72 }) => {
   const pips: Record<number, Array<[number, number]>> = {
     1: [[0, 0]],
-    2: [[-14, -14], [14, 14]],
-    3: [[-14, -14], [0, 0], [14, 14]],
-    4: [[-14, -14], [14, -14], [-14, 14], [14, 14]],
-    5: [[-14, -14], [14, -14], [0, 0], [-14, 14], [14, 14]],
-    6: [[-14, -16], [14, -16], [-14, 0], [14, 0], [-14, 16], [14, 16]],
+    2: [[-16, -16], [16, 16]],
+    3: [[-16, -16], [0, 0], [16, 16]],
+    4: [[-16, -16], [16, -16], [-16, 16], [16, 16]],
+    5: [[-16, -16], [16, -16], [0, 0], [-16, 16], [16, 16]],
+    6: [[-16, -18], [16, -18], [-16, 0], [16, 0], [-16, 18], [16, 18]],
   };
 
   const activePips = value && pips[value] ? pips[value] : [];
+  const isSix = value === 6;
 
   return (
     <div
-      onClick={canRoll ? onRoll : undefined}
-      className={`relative inline-flex items-center justify-center select-none transition-transform duration-200 ${
-        canRoll ? 'cursor-pointer active:scale-90 hover:scale-105' : ''
-      }`}
+      onClick={canRoll && !isRolling ? onRoll : undefined}
+      className={`relative inline-flex items-center justify-center select-none transition-all duration-200 ${
+        isRolling ? 'dice-tumble-anim pointer-events-none' : ''
+      } ${canRoll && !isRolling ? 'cursor-pointer active:scale-90 hover:scale-105' : ''}`}
       style={{ width: size, height: size }}
+      role={canRoll ? 'button' : undefined}
+      aria-label={value ? `Die showing ${value}` : 'Roll Die'}
     >
-      <svg viewBox="0 0 72 72" className="w-full h-full drop-shadow-xl overflow-visible">
+      <style>{`
+        @keyframes dice-tumble {
+          0% { transform: rotate(0deg) scale(1) translateY(0); }
+          20% { transform: rotate(-22deg) scale(1.15) translateY(-8px); }
+          45% { transform: rotate(26deg) scale(1.2) translateY(-10px); }
+          70% { transform: rotate(-15deg) scale(1.1) translateY(-4px); }
+          100% { transform: rotate(0deg) scale(1) translateY(0); }
+        }
+        .dice-tumble-anim {
+          animation: dice-tumble 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+      `}</style>
+
+      <svg viewBox="0 0 72 72" className="w-full h-full drop-shadow-2xl overflow-visible">
         <defs>
           <linearGradient id="dice-face" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#FFFFFF" />
-            <stop offset="70%" stop-color="#F4F4F5" />
-            <stop offset="100%" stop-color="#E4E4E7" />
+            <stop offset="0%" stopColor="#FFFFFF" />
+            <stop offset="65%" stopColor="#F4F4F6" />
+            <stop offset="100%" stopColor="#E4E4E7" />
+          </linearGradient>
+          <linearGradient id="dice-gold-face" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#FFFBEB" />
+            <stop offset="65%" stopColor="#FEF3C7" />
+            <stop offset="100%" stopColor="#FDE68A" />
           </linearGradient>
           <radialGradient id="pip-recess" cx="40%" cy="35%" r="65%">
-            <stop offset="0%" stop-color="#18181B" />
-            <stop offset="100%" stop-color="#09090B" />
+            <stop offset="0%" stopColor={isSix ? '#92400E' : '#18181B'} />
+            <stop offset="100%" stopColor={isSix ? '#78350F' : '#09090B'} />
           </radialGradient>
         </defs>
 
+        {/* Outer Shadow */}
+        <rect
+          x="3"
+          y="5"
+          width="66"
+          height="66"
+          rx="15"
+          fill="#000000"
+          fillOpacity="0.45"
+        />
+
         {/* Outer Dice Shell */}
         <rect
-          x="4"
-          y="4"
-          width="64"
-          height="64"
-          rx="14"
-          ry="14"
-          fill="url(#dice-face)"
-          stroke="#D4D4D8"
-          strokeWidth="1.5"
+          x="3"
+          y="3"
+          width="66"
+          height="66"
+          rx="15"
+          ry="15"
+          fill={isSix ? 'url(#dice-gold-face)' : 'url(#dice-face)'}
+          stroke={isSix ? '#D97706' : '#D4D4D8'}
+          strokeWidth={isSix ? '2' : '1.5'}
         />
 
         {/* Dice Bevel Inset */}
         <rect
-          x="7"
-          y="7"
-          width="58"
-          height="58"
-          rx="11"
-          ry="11"
+          x="6.5"
+          y="6.5"
+          width="59"
+          height="59"
+          rx="12"
+          ry="12"
           fill="none"
-          stroke="#FFFFFF"
+          stroke={isSix ? '#FDE68A' : '#FFFFFF'}
           strokeWidth="1.2"
         />
 
@@ -174,8 +206,8 @@ export const LudoDiceSvg: React.FC<{
           <g transform="translate(36, 36)">
             {activePips.map(([px, py], idx) => (
               <g key={idx} transform={`translate(${px}, ${py})`}>
-                <circle r="4.8" fill="url(#pip-recess)" />
-                <circle cx="-1" cy="-1" r="1.2" fill="#71717A" fillOpacity="0.4" />
+                <circle r="5" fill="url(#pip-recess)" />
+                <circle cx="-1.2" cy="-1.2" r="1.3" fill={isSix ? '#FDE68A' : '#71717A'} fillOpacity="0.6" />
               </g>
             ))}
           </g>
@@ -183,13 +215,14 @@ export const LudoDiceSvg: React.FC<{
           <g transform="translate(36, 36)">
             <text
               x="0"
-              y="6"
-              fontFamily="'Impact', 'Arial Black', sans-serif"
-              fontSize="20"
-              fill="#71717A"
+              y="7"
+              fontFamily="system-ui, sans-serif"
+              fontSize="24"
+              fontWeight="900"
+              fill="#A1A1AA"
               textAnchor="middle"
             >
-              ?
+              🎲
             </text>
           </g>
         )}

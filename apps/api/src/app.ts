@@ -53,6 +53,9 @@ export function buildApp(
     resolvedSession = new SessionService(new InMemorySessionRepository(), gameRegistry);
   }
 
+  resolvedIdentity.setSessionStatsProvider(() => resolvedSession.getActiveSessionStats());
+  resolvedIdentity.setSessionCreator((userId, input) => resolvedSession.createSession(userId, input));
+
   registerErrorHandler(app);
   void app.register(registerHealthRoutes);
   registerIdentityRoutes(app, resolvedIdentity);

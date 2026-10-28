@@ -58,7 +58,7 @@ describe('wallet-store', () => {
     const customization = loadStoredCustomization();
     expect(customization.flag).toBe('🇳🇬');
     expect(customization.avatarId).toBe('chidi');
-    expect(customization.elo).toBe(1420);
+    expect(customization.elo).toBe(1200);
 
     expect(AVAILABLE_FLAGS.some((f) => f.code === 'NG')).toBe(true);
     expect(AVAILABLE_FLAGS.some((f) => f.code === 'GH')).toBe(true);

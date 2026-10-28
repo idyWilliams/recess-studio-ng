@@ -31,6 +31,48 @@ export interface SessionRecord {
   createdAt: Date;
 }
 
+export interface PlayerChallengeInput {
+  challengerId: string;
+  challengerUsername: string;
+  targetPlayerId: string;
+  targetUsername?: string;
+  gameType: string;
+}
+
+export interface PlayerChallengeResponse {
+  publicId: string;
+  matchUrl: string;
+  whatsappDirectUrl: string | null;
+  targetNotified: boolean;
+  notificationId: string;
+}
+
+export interface PlayerNotification {
+  id: string;
+  type: 'challenge' | 'turn' | 'game_result';
+  challengerId: string;
+  challengerUsername: string;
+  targetPlayerId: string;
+  targetUserId: string;
+  gameType: string;
+  gameName: string;
+  publicId: string;
+  matchUrl: string;
+  message: string;
+  createdAt: string;
+  read: boolean;
+}
+
+export type SessionStatsProvider = () => Promise<{
+  perGameCounts: Record<string, number>;
+  activeMatchesCount: number;
+}>;
+
+export type SessionCreator = (
+  userId: string,
+  input: { gameId: string },
+) => Promise<{ publicId: string }>;
+
 export interface IdentityRepository {
   createUser(email?: string, whatsappNumber?: string): Promise<UserAccount>;
   createProfile(
@@ -538,7 +580,139 @@ export class InMemoryIdentityRepository implements IdentityRepository {
 }
 
 export class IdentityService {
+  private sessionStatsProvider?: SessionStatsProvider;
+  private sessionCreator?: SessionCreator;
+  private notifications: PlayerNotification[] = [];
+
   constructor(private repo: IdentityRepository = new InMemoryIdentityRepository()) {}
+
+  setSessionStatsProvider(provider: SessionStatsProvider): void {
+    this.sessionStatsProvider = provider;
+  }
+
+  setSessionCreator(creator: SessionCreator): void {
+    this.sessionCreator = creator;
+  }
+
+  async createChallenge(input: PlayerChallengeInput): Promise<PlayerChallengeResponse> {
+    if (!input.challengerId || !input.challengerUsername || !input.targetPlayerId || !input.gameType) {
+      throw new AppError('INVALID_INPUT', 'Missing required challenge parameters', 400);
+    }
+
+    let publicId = '';
+    if (this.sessionCreator) {
+      try {
+        const session = await this.sessionCreator(input.challengerId, { gameId: input.gameType });
+        publicId = session.publicId;
+      } catch {
+        publicId = crypto.randomBytes(6).toString('hex');
+      }
+    } else {
+      publicId = crypto.randomBytes(6).toString('hex');
+    }
+
+    const matchUrl = `/games/${input.gameType}/${publicId}`;
+
+    // Look up target player privately inside identity repository
+    let targetProfile = await this.repo.findProfileById(input.targetPlayerId);
+    if (!targetProfile) {
+      targetProfile = await this.repo.findProfileByUserId(input.targetPlayerId);
+    }
+    if (!targetProfile && input.targetUsername) {
+      targetProfile = await this.repo.findProfileByUsername(input.targetUsername);
+    }
+
+    const targetUserId = targetProfile?.userId ?? input.targetPlayerId;
+    const targetUser = await this.repo.findUserById(targetUserId);
+    const targetPhone = targetUser?.whatsappNumber ?? null;
+
+    const gameNames: Record<string, string> = {
+      'word-battle': 'Word Battle',
+      'mancala': 'Mancala Royale',
+      'whot': 'Whot! Naija',
+      'ludo': 'Ludo Arena',
+    };
+    const gameName = gameNames[input.gameType] || input.gameType;
+
+    const notificationId = crypto.randomUUID();
+    const notification: PlayerNotification = {
+      id: notificationId,
+      type: 'challenge',
+      challengerId: input.challengerId,
+      challengerUsername: input.challengerUsername,
+      targetPlayerId: targetProfile?.id ?? input.targetPlayerId,
+      targetUserId,
+      gameType: input.gameType,
+      gameName,
+      publicId,
+      matchUrl,
+      message: `⚔️ @${input.challengerUsername} challenged you to a duel in ${gameName}!`,
+      createdAt: new Date().toISOString(),
+      read: false,
+    };
+    this.notifications.unshift(notification);
+    if (this.notifications.length > 200) {
+      this.notifications.pop();
+    }
+
+    let targetNotified = false;
+    let whatsappDirectUrl: string | null = null;
+
+    if (targetPhone) {
+      const cleanDigits = targetPhone.replace(/[^\d]/g, '');
+      const waText = encodeURIComponent(
+        `⚔️ @${input.challengerUsername} challenged you to ${gameName} on Recess!\n\nAccept duel & play in browser:\nhttps://recess.studio${matchUrl}`,
+      );
+      whatsappDirectUrl = `whatsapp://send?phone=${cleanDigits}&text=${waText}`;
+
+      const webhookUrl = process.env.WHATSAPP_WEBHOOK_URL;
+      if (webhookUrl) {
+        try {
+          void fetch(webhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'challenge',
+              to: targetPhone,
+              challengerUsername: input.challengerUsername,
+              gameName,
+              matchUrl,
+            }),
+            signal: AbortSignal.timeout(3000),
+          }).catch(() => {});
+          targetNotified = true;
+        } catch {
+          // ignore webhook dispatch error
+        }
+      }
+    }
+
+    return {
+      publicId,
+      matchUrl,
+      whatsappDirectUrl,
+      targetNotified,
+      notificationId,
+    };
+  }
+
+  getNotifications(targetIdentifier: string): PlayerNotification[] {
+    const clean = targetIdentifier.toLowerCase().trim();
+    return this.notifications.filter(
+      (n) =>
+        n.targetUserId.toLowerCase() === clean ||
+        n.targetPlayerId.toLowerCase() === clean,
+    );
+  }
+
+  dismissNotification(notificationId: string): boolean {
+    const idx = this.notifications.findIndex((n) => n.id === notificationId);
+    if (idx !== -1) {
+      this.notifications.splice(idx, 1);
+      return true;
+    }
+    return false;
+  }
 
   private hashToken(token: string): string {
     return crypto.createHash('sha256').update(token).digest('hex');
@@ -693,82 +867,48 @@ export class IdentityService {
     const activeCount = await this.repo.countActiveUsers(15);
     const profiles = await this.repo.listRecentProfiles(15);
 
-    const seedPlayers: PublicPlayerProfile[] = [
-      {
-        id: 'p-seed-1',
-        username: 'Grandmaster',
-        displayName: 'Chidi Master',
-        avatarId: 'avatar-chidi',
-        countryFlag: '🇳🇬',
-        avatarUrl: '/assets/shared/avatars/avatar-chidi.svg',
-        elo: 1840,
-        isOnline: true,
-        lastActiveAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-      },
-      {
-        id: 'p-seed-2',
-        username: 'tunde',
-        displayName: 'Tunde Adebayo',
-        avatarId: 'avatar-tunde',
-        countryFlag: '🇳🇬',
-        avatarUrl: '/assets/shared/avatars/avatar-tunde.svg',
-        elo: 1690,
-        isOnline: true,
-        lastActiveAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-      },
-      {
-        id: 'p-seed-3',
-        username: 'amina',
-        displayName: 'Amina Mensah',
-        avatarId: 'avatar-amina',
-        countryFlag: '🇬🇭',
-        avatarUrl: '/assets/shared/avatars/avatar-amina.svg',
-        elo: 1610,
-        isOnline: true,
-        lastActiveAt: new Date(Date.now() - 7 * 60 * 1000).toISOString(),
-      },
-      {
-        id: 'p-seed-4',
-        username: 'efe',
-        displayName: 'Efe Omowale',
-        avatarId: 'avatar-efe',
-        countryFlag: '🇳🇬',
-        avatarUrl: '/assets/shared/avatars/avatar-efe.svg',
-        elo: 1570,
-        isOnline: false,
-        lastActiveAt: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
-      },
-    ];
+    const mappedRealPlayers: PublicPlayerProfile[] = profiles.map((p) => {
+      const avatarSlug = p.avatarId
+        ? p.avatarId.startsWith('avatar-')
+          ? p.avatarId
+          : `avatar-${p.avatarId}`
+        : 'avatar-chidi';
+      return {
+        id: p.id,
+        username: p.username,
+        displayName: p.displayName ?? p.username,
+        avatarId: p.avatarId ?? 'avatar-chidi',
+        countryFlag: p.countryFlag ?? '🇳🇬',
+        avatarUrl: p.avatarUrl ?? `/assets/shared/avatars/${avatarSlug}.svg`,
+        elo: p.elo ?? 1420,
+        isOnline: p.isOnline ?? true,
+        lastActiveAt: p.lastActiveAt ?? p.updatedAt,
+      };
+    });
 
-    const mappedRealPlayers: PublicPlayerProfile[] = profiles.map((p) => ({
-      id: p.id,
-      username: p.username,
-      displayName: p.displayName ?? p.username,
-      avatarId: p.avatarId ?? 'avatar-chidi',
-      countryFlag: p.countryFlag ?? '🇳🇬',
-      avatarUrl: p.avatarUrl ?? '/assets/shared/avatars/avatar-chidi.svg',
-      elo: p.elo ?? 1420,
-      isOnline: p.isOnline ?? true,
-      lastActiveAt: p.lastActiveAt ?? p.updatedAt,
-    }));
-
-    const realUsernames = new Set(mappedRealPlayers.map((p) => p.username.toLowerCase()));
-    const combinedRecent = [
-      ...mappedRealPlayers,
-      ...seedPlayers.filter((s) => !realUsernames.has(s.username.toLowerCase())),
-    ];
+    const sessionStats = this.sessionStatsProvider
+      ? await this.sessionStatsProvider()
+      : {
+          perGameCounts: {
+            'word-battle': 0,
+            'mancala': 0,
+            'whot': 0,
+            'ludo': 0,
+          },
+          activeMatchesCount: 0,
+        };
 
     return {
-      totalRegisteredPlayers: Math.max(combinedRecent.length, registeredCount + 4),
-      onlineNowCount: Math.max(3, activeCount + 3),
-      activeMatchesCount: Math.max(2, Math.floor(activeCount / 2) + 2),
+      totalRegisteredPlayers: Math.max(mappedRealPlayers.length, registeredCount),
+      onlineNowCount: Math.max(0, activeCount),
+      activeMatchesCount: sessionStats.activeMatchesCount,
       perGameCounts: {
-        'word-battle': 12,
-        'mancala': 8,
-        'whot': 15,
-        'ludo': 10,
+        'word-battle': sessionStats.perGameCounts['word-battle'] ?? 0,
+        'mancala': sessionStats.perGameCounts['mancala'] ?? 0,
+        'whot': sessionStats.perGameCounts['whot'] ?? 0,
+        'ludo': sessionStats.perGameCounts['ludo'] ?? 0,
       },
-      recentPlayers: combinedRecent.slice(0, 15),
+      recentPlayers: mappedRealPlayers.slice(0, 15),
     };
   }
 }

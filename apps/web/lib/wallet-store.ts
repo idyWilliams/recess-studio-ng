@@ -40,10 +40,10 @@ export const AVAILABLE_FLAGS = [
 ] as const;
 
 export const AVAILABLE_AVATARS = [
-  { id: 'chidi', label: 'Chidi', url: '/assets/shared/avatars/avatar-chidi.svg' },
-  { id: 'tunde', label: 'Tunde', url: '/assets/shared/avatars/avatar-tunde.svg' },
-  { id: 'amina', label: 'Amina', url: '/assets/shared/avatars/avatar-amina.svg' },
-  { id: 'efe', label: 'Efe', url: '/assets/shared/avatars/avatar-efe.svg' },
+  { id: 'chidi', label: 'Crown', url: '/assets/shared/avatars/avatar-chidi.svg' },
+  { id: 'tunde', label: 'Striker', url: '/assets/shared/avatars/avatar-tunde.svg' },
+  { id: 'amina', label: 'Vanguard', url: '/assets/shared/avatars/avatar-amina.svg' },
+  { id: 'efe', label: 'Maverick', url: '/assets/shared/avatars/avatar-efe.svg' },
 ] as const;
 
 const DEFAULT_WALLET: WalletState = {
@@ -56,11 +56,11 @@ const DEFAULT_CUSTOMIZATION: PlayerCustomization = {
   flag: '🇳🇬',
   countryName: 'Nigeria',
   avatarId: 'chidi',
-  rankTitle: 'Grandmaster',
-  rankTier: 'Gold III',
-  elo: 1420,
-  gamesPlayed: 24,
-  winRate: 68,
+  rankTitle: 'Player',
+  rankTier: 'Bronze I',
+  elo: 1200,
+  gamesPlayed: 0,
+  winRate: 0,
 };
 
 export function loadStoredWallet(): WalletState {

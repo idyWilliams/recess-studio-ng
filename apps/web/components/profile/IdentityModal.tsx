@@ -282,9 +282,9 @@ export function IdentityModal({
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="chidi_pro"
+                placeholder="your_handle"
                 maxLength={32}
-                className="w-full rounded-xl border border-white/10 bg-white/5 py-2 pl-8 pr-3 text-sm font-semibold text-white placeholder-white/20 transition-all focus:border-recess-purple focus:bg-white/10 focus:outline-none"
+                className="w-full rounded-xl border border-white/10 bg-white/5 py-2 pl-8 pr-3 text-sm font-semibold text-white placeholder-white/20 transition-all focus:border-[#00A884] focus:bg-white/10 focus:outline-none"
               />
             </div>
             {error && (
@@ -340,7 +340,7 @@ export function IdentityModal({
                     onClick={() => setSelectedFlag(flagItem.flag)}
                     className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-xs font-bold transition-all active:scale-95 ${
                       isSelected
-                        ? 'border-recess-purple bg-recess-purple/25 text-white shadow-glow-purple'
+                        ? 'border-[#00A884] bg-[#00A884]/20 text-white shadow-glow-green'
                         : 'border-white/10 bg-white/[0.03] text-white/70 hover:border-white/20 hover:text-white'
                     }`}
                   >
@@ -357,7 +357,7 @@ export function IdentityModal({
             <button
               type="submit"
               disabled={register.isPending}
-              className="w-full rounded-xl bg-gradient-to-r from-[#00A884] via-emerald-600 to-recess-blue py-3 text-sm font-extrabold text-white shadow-glow-emerald transition-all hover:opacity-95 active:scale-[0.98] disabled:opacity-50"
+              className="w-full rounded-xl bg-[#00A884] hover:bg-[#008f6f] py-3 text-sm font-extrabold text-[#06130F] shadow-glow-green transition-all hover:opacity-95 active:scale-[0.98] disabled:opacity-50"
             >
               {isSuccess
                 ? successMessage

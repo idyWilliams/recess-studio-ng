@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, lte } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, lte, sql } from 'drizzle-orm';
 
 import {
   gameMoves,
@@ -109,6 +109,12 @@ export interface SessionRepository {
 
   /** Updates the final session result payload (e.g. attaching rematch publicId). */
   updateSessionResult(sessionId: string, result: unknown): Promise<void>;
+
+  /** Returns real active / waiting session counts grouped by game and total active matches count. */
+  countActiveSessionsByGame(): Promise<{
+    perGameCounts: Record<string, number>;
+    activeMatchesCount: number;
+  }>;
 }
 
 type DbOrTx = Database | Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -419,6 +425,36 @@ export class PostgresSessionRepository implements SessionRepository {
       .set({ result, updatedAt: new Date() })
       .where(eq(gameSessions.id, sessionId));
   }
+
+  async countActiveSessionsByGame(): Promise<{
+    perGameCounts: Record<string, number>;
+    activeMatchesCount: number;
+  }> {
+    const rows = await this.db
+      .select({
+        gameId: gameSessions.gameId,
+        status: gameSessions.status,
+      })
+      .from(gameSessions)
+      .where(sql`${gameSessions.status} IN ('waiting', 'active')`);
+
+    const perGameCounts: Record<string, number> = {
+      'word-battle': 0,
+      'mancala': 0,
+      'whot': 0,
+      'ludo': 0,
+    };
+    let activeMatchesCount = 0;
+    for (const row of rows) {
+      if (row.gameId in perGameCounts) {
+        perGameCounts[row.gameId] = (perGameCounts[row.gameId] || 0) + 1;
+      }
+      if (row.status === 'active') {
+        activeMatchesCount++;
+      }
+    }
+    return { perGameCounts, activeMatchesCount };
+  }
 }
 
 export class InMemorySessionRepository implements SessionRepository {
@@ -602,5 +638,29 @@ export class InMemorySessionRepository implements SessionRepository {
       session.result = result;
       session.updatedAt = new Date().toISOString();
     }
+  }
+
+  async countActiveSessionsByGame(): Promise<{
+    perGameCounts: Record<string, number>;
+    activeMatchesCount: number;
+  }> {
+    const perGameCounts: Record<string, number> = {
+      'word-battle': 0,
+      'mancala': 0,
+      'whot': 0,
+      'ludo': 0,
+    };
+    let activeMatchesCount = 0;
+    for (const session of this.sessions.values()) {
+      if (session.status === 'active' || session.status === 'waiting') {
+        if (session.gameId in perGameCounts) {
+          perGameCounts[session.gameId] = (perGameCounts[session.gameId] || 0) + 1;
+        }
+      }
+      if (session.status === 'active') {
+        activeMatchesCount++;
+      }
+    }
+    return { perGameCounts, activeMatchesCount };
   }
 }

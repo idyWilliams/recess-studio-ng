@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 
 import type { RegisterUserInput } from '@recess/shared';
 
-import { IdentityService } from '../identity/identity-service.js';
+import { IdentityService, type PlayerChallengeInput } from '../identity/identity-service.js';
 import { authenticateRequest } from './auth-helper.js';
 
 export function registerIdentityRoutes(
@@ -47,4 +47,42 @@ export function registerIdentityRoutes(
     const { id } = request.params;
     return identityService.getPublicGamingProfile(id);
   });
+
+  // POST /players/challenge
+  app.post<{ Body: PlayerChallengeInput }>('/players/challenge', async (request, reply) => {
+    const response = await identityService.createChallenge(request.body);
+    return reply.status(200).send(response);
+  });
+
+  // GET /players/notifications
+  app.get<{ Querystring: { userId?: string; targetId?: string; profileId?: string } }>(
+    '/players/notifications',
+    async (request, reply) => {
+      const target =
+        request.query.userId || request.query.targetId || request.query.profileId;
+      if (!target) {
+        return reply.status(200).send([]);
+      }
+      const notifications = identityService.getNotifications(target);
+      return reply.status(200).send(notifications);
+    },
+  );
+
+  // POST /players/notifications/:id/dismiss
+  app.post<{ Params: { id: string } }>(
+    '/players/notifications/:id/dismiss',
+    async (request, reply) => {
+      const ok = identityService.dismissNotification(request.params.id);
+      return reply.status(200).send({ ok });
+    },
+  );
+
+  // DELETE /players/notifications/:id
+  app.delete<{ Params: { id: string } }>(
+    '/players/notifications/:id',
+    async (request, reply) => {
+      const ok = identityService.dismissNotification(request.params.id);
+      return reply.status(200).send({ ok });
+    },
+  );
 }

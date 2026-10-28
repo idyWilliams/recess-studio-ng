@@ -11,19 +11,23 @@ import { triggerHaptic } from '@/lib/haptics';
 import {
   fetchGameSession,
   submitGameMove,
-  ApiClientError,
 } from '@/lib/api-client';
 import {
   LudoRulesEngine,
   canTokenMove,
   type LudoState,
   type LudoMove,
-  type LudoToken,
 } from '@recess/game-ludo';
 import { shareMatchSnapshotToWhatsApp } from '@/lib/share-snapshot';
 import { formatWhatsAppDeepLink } from '@/lib/whatsapp';
 
 const ludoEngine = new LudoRulesEngine();
+
+interface RollOutcomePill {
+  value: number;
+  text: string;
+  pillClass: string;
+}
 
 export default function LudoArenaPage() {
   const params = useParams();
@@ -37,7 +41,9 @@ export default function LudoArenaPage() {
   const [session, setSession] = useState<any>(null);
   const [localState, setLocalState] = useState<LudoState | null>(null);
   const [isBotPlaying, setIsBotPlaying] = useState(false);
-  const [calloutToast, setCalloutToast] = useState<string | null>(null);
+  const [isRolling, setIsRolling] = useState(false);
+  const [animatedDiceValue, setAnimatedDiceValue] = useState<number | null>(null);
+  const [rollOutcome, setRollOutcome] = useState<RollOutcomePill | null>(null);
 
   // Initialize demo or fetch live match
   useEffect(() => {
@@ -47,7 +53,11 @@ export default function LudoArenaPage() {
         { id: 'bot-green', displayName: 'Tunde (Ludo Bot)' },
       ]);
       setLocalState(initial);
-      setCalloutToast('🎮 Match Started! Tap the 3D Dice to roll');
+      setRollOutcome({
+        value: 1,
+        text: '🎲 Match Started! Tap the Die to roll',
+        pillClass: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300',
+      });
     } else {
       let isMounted = true;
       const poll = async () => {
@@ -92,14 +102,17 @@ export default function LudoArenaPage() {
     return valids;
   }, [currentState, turnPhase, diceRoll, activeColor]);
 
-  // Flash Callout Toast
-  const triggerCallout = (text: string) => {
-    setCalloutToast(text);
-    triggerHaptic('medium');
-    setTimeout(() => {
-      setCalloutToast((prev) => (prev === text ? null : prev));
-    }, 3200);
-  };
+  // Pawn counts for clean 2-player HUD bar
+  const redTokens = currentState?.tokens.red ?? [];
+  const greenTokens = currentState?.tokens.green ?? [];
+
+  const myHome = redTokens.filter((t) => t.isHome).length;
+  const myYard = redTokens.filter((t) => t.step === -1).length;
+  const myTrack = redTokens.filter((t) => t.step >= 0 && !t.isHome).length;
+
+  const oppHome = greenTokens.filter((t) => t.isHome).length;
+  const oppYard = greenTokens.filter((t) => t.step === -1).length;
+  const oppTrack = greenTokens.filter((t) => t.step >= 0 && !t.isHome).length;
 
   // Bot Turn Automation (in demo mode)
   useEffect(() => {
@@ -119,7 +132,17 @@ export default function LudoArenaPage() {
             setLocalState(next);
 
             if (next.diceRoll === 6) {
-              triggerCallout('🤖 Bot rolled a 6! Bonus Roll / Exit Yard!');
+              setRollOutcome({
+                value: 6,
+                text: '🤖 Opponent rolled 6! Extra turn & exit yard',
+                pillClass: 'border-amber-500/40 bg-amber-500/15 text-amber-300',
+              });
+            } else {
+              setRollOutcome({
+                value: next.diceRoll ?? 1,
+                text: `🤖 Opponent rolled ${next.diceRoll}`,
+                pillClass: 'border-white/10 bg-white/5 text-white/70',
+              });
             }
           } else if (currentState.turnPhase === 'move') {
             // Bot Moves
@@ -130,7 +153,6 @@ export default function LudoArenaPage() {
               .filter((i) => i !== -1);
 
             if (validIdxs.length > 0) {
-              // Prefer moving tokens on track, or exiting yard on 6
               const yardToken = validIdxs.find((i) => botTokens[i]!.step === -1);
               const trackToken = validIdxs.find((i) => botTokens[i]!.step >= 0);
               const chosen = trackToken !== undefined ? trackToken : (yardToken ?? validIdxs[0]!);
@@ -144,53 +166,123 @@ export default function LudoArenaPage() {
 
               const lastHistory = next.history[next.history.length - 1];
               if (lastHistory?.capturedTokenId) {
-                triggerCallout('💥 KNOCKOUT! Opponent token captured!');
+                setRollOutcome({
+                  value: roll,
+                  text: '💥 Opponent captured your pawn!',
+                  pillClass: 'border-rose-500/40 bg-rose-500/20 text-rose-300',
+                });
               }
             }
           }
         } catch {
-          // pass on error
+          // pass on bot error
         } finally {
           setIsBotPlaying(false);
         }
-      }, 1200);
+      }, 1100);
       return () => clearTimeout(timer);
     }
   }, [isDemo, currentState, isBotPlaying]);
 
-  // Handle Roll Dice Click
+  // Handle Animated Roll Dice
   const handleRollDice = async () => {
-    if (!currentState || !isMyTurn || turnPhase !== 'roll' || currentState.isGameOver) return;
-    triggerHaptic('medium');
-
-    const move: LudoMove = { type: 'roll' };
-
-    if (isDemo) {
-      try {
-        const next = ludoEngine.applyMove(currentState, move, 'player-red');
-        setLocalState(next);
-        if (next.diceRoll === 6) {
-          triggerCallout('🎲 ROLLED A 6! Bonus Turn / Exit Home Yard!');
-        } else {
-          triggerCallout(`🎲 Rolled a ${next.diceRoll}! Pick a glowing pawn`);
-        }
-      } catch (err: any) {
-        triggerCallout(`⚠️ ${err?.message || 'Illegal Roll'}`);
-      }
-    } else if (sessionToken) {
-      try {
-        const updated = await submitGameMove(
-          sessionToken,
-          publicId,
-          move,
-          session?.stateVersion ?? 0,
-        );
-        setSession(updated);
-        setLocalState(updated.state as unknown as LudoState);
-      } catch (err: any) {
-        triggerCallout(`⚠️ ${err?.message || 'Roll failed'}`);
-      }
+    if (!currentState || !isMyTurn || turnPhase !== 'roll' || currentState.isGameOver || isRolling) {
+      return;
     }
+
+    setIsRolling(true);
+    triggerHaptic('light');
+
+    // Run 450ms multi-axis tumble animation cycling faces 1 -> 4 -> 2 -> 6 -> final
+    const tumbleSequence = [1, 4, 2, 6];
+    tumbleSequence.forEach((face, index) => {
+      setTimeout(() => {
+        setAnimatedDiceValue(face);
+        triggerHaptic('light');
+      }, index * 90);
+    });
+
+    setTimeout(async () => {
+      const move: LudoMove = { type: 'roll' };
+
+      if (isDemo) {
+        try {
+          const next = ludoEngine.applyMove(currentState, move, 'player-red');
+          setLocalState(next);
+          const finalVal = next.diceRoll ?? 1;
+          setAnimatedDiceValue(finalVal);
+          setIsRolling(false);
+          triggerHaptic('heavy');
+
+          // Check if player has valid moves with this roll
+          const playerTokens = next.tokens.red ?? [];
+          const hasMoves = playerTokens.some((t) => canTokenMove(t, finalVal));
+
+          if (finalVal === 6) {
+            setRollOutcome({
+              value: 6,
+              text: 'ROLLED 6! ★ Tap a Yard or Track Pawn',
+              pillClass: 'border-amber-400 bg-amber-500/20 text-amber-200 shadow-glow-gold',
+            });
+          } else if (hasMoves) {
+            setRollOutcome({
+              value: finalVal,
+              text: `ROLLED ${finalVal} — Tap Your Highlighted Pawn`,
+              pillClass: 'border-emerald-500 bg-emerald-500/20 text-emerald-300 shadow-glow-green',
+            });
+          } else {
+            setRollOutcome({
+              value: finalVal,
+              text: `ROLLED ${finalVal} — No Valid Moves (Passing Turn...)`,
+              pillClass: 'border-rose-500/50 bg-rose-500/20 text-rose-300',
+            });
+          }
+        } catch (err: any) {
+          setIsRolling(false);
+        }
+      } else if (sessionToken) {
+        try {
+          const updated = await submitGameMove(
+            sessionToken,
+            publicId,
+            move,
+            session?.stateVersion ?? 0,
+          );
+          setSession(updated);
+          const next = updated.state as unknown as LudoState;
+          setLocalState(next);
+          const finalVal = next.diceRoll ?? 1;
+          setAnimatedDiceValue(finalVal);
+          setIsRolling(false);
+          triggerHaptic('heavy');
+
+          const playerTokens = next.tokens.red ?? [];
+          const hasMoves = playerTokens.some((t) => canTokenMove(t, finalVal));
+
+          if (finalVal === 6) {
+            setRollOutcome({
+              value: 6,
+              text: 'ROLLED 6! ★ Tap a Yard or Track Pawn',
+              pillClass: 'border-amber-400 bg-amber-500/20 text-amber-200 shadow-glow-gold',
+            });
+          } else if (hasMoves) {
+            setRollOutcome({
+              value: finalVal,
+              text: `ROLLED ${finalVal} — Tap Your Highlighted Pawn`,
+              pillClass: 'border-emerald-500 bg-emerald-500/20 text-emerald-300 shadow-glow-green',
+            });
+          } else {
+            setRollOutcome({
+              value: finalVal,
+              text: `ROLLED ${finalVal} — No Valid Moves (Passing Turn...)`,
+              pillClass: 'border-rose-500/50 bg-rose-500/20 text-rose-300',
+            });
+          }
+        } catch {
+          setIsRolling(false);
+        }
+      }
+    }, 450);
   };
 
   // Handle Token Click
@@ -207,12 +299,21 @@ export default function LudoArenaPage() {
 
         const lastHistory = next.history[next.history.length - 1];
         if (lastHistory?.capturedTokenId) {
-          triggerCallout('💥 CAPTURE! Opponent pawn knocked back to Yard!');
+          setRollOutcome({
+            value: 6,
+            text: '💥 CAPTURE! Opponent pawn knocked back to Yard!',
+            pillClass: 'border-amber-400 bg-amber-500/25 text-amber-200 shadow-glow-gold',
+          });
+          triggerHaptic('heavy');
         } else if (lastHistory?.isExtraTurn) {
-          triggerCallout('✨ BONUS ROLL GRANTED!');
+          setRollOutcome({
+            value: 6,
+            text: '✨ BONUS ROLL GRANTED! Tap Die Again',
+            pillClass: 'border-emerald-400 bg-emerald-500/25 text-emerald-200 shadow-glow-green',
+          });
         }
       } catch (err: any) {
-        triggerCallout(`⚠️ ${err?.message || 'Illegal Move'}`);
+        // pass error
       }
     } else if (sessionToken) {
       try {
@@ -224,8 +325,8 @@ export default function LudoArenaPage() {
         );
         setSession(updated);
         setLocalState(updated.state as unknown as LudoState);
-      } catch (err: any) {
-        triggerCallout(`⚠️ ${err?.message || 'Move failed'}`);
+      } catch {
+        // pass error
       }
     }
   };
@@ -242,12 +343,12 @@ export default function LudoArenaPage() {
         statusBadge: '4-PLAYER TRACK RACE',
         playerOne: {
           name: myUsername,
-          score: currentState?.tokens.red.filter((t) => t.isHome).length ?? 0,
+          score: myHome,
           isCurrentTurn: isMyTurn,
         },
         playerTwo: {
-          name: 'Tunde (Bot)',
-          score: currentState?.tokens.green.filter((t) => t.isHome).length ?? 0,
+          name: isDemo ? 'Tunde (Bot)' : 'Opponent',
+          score: oppHome,
           isCurrentTurn: !isMyTurn,
         },
       },
@@ -258,51 +359,62 @@ export default function LudoArenaPage() {
     });
   };
 
+  const opponentDisplayName = isDemo ? 'Tunde (Ludo Bot)' : 'Opponent';
+  const effectiveDiceVal = isRolling ? animatedDiceValue : (diceRoll ?? animatedDiceValue);
+
   return (
     <WhatsAppMiniAppShell
       gameTitle="Ludo Arena"
-      opponentName={isDemo ? 'Tunde (Ludo Bot)' : 'Opponent'}
-      opponentScore={currentState?.tokens.green.filter((t) => t.isHome).length ?? 0}
-      myScore={currentState?.tokens.red.filter((t) => t.isHome).length ?? 0}
+      opponentName={opponentDisplayName}
+      opponentScore={oppHome}
+      myScore={myHome}
       myTurn={isMyTurn}
       timeLeftSec={isMyTurn ? 15 : null}
       onReturnToWhatsApp={handleShareTurn}
     >
-      <div className="relative min-h-[82vh] flex flex-col justify-between py-2 select-none overflow-hidden">
-        {/* Top Status Bar */}
-        <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-stone-900/80 border border-white/10 backdrop-blur-md">
-          <div className="flex items-center gap-2 text-xs font-black">
-            <span className="text-rose-400">🎲 Ludo Arena</span>
-            <span className="text-white/40">•</span>
-            <span className={isMyTurn ? 'text-emerald-400 animate-pulse' : 'text-white/60'}>
-              {isMyTurn
-                ? turnPhase === 'roll'
-                  ? 'ROLL DICE'
-                  : 'MOVE PAWN'
-                : 'OPPONENT TURN...'}
-            </span>
+      <div className="relative min-h-[84vh] flex flex-col justify-between py-1 select-none overflow-hidden">
+        {/* TOP BAR: Opponent Profile & Pawn Status Bar */}
+        <div className="flex items-center justify-between px-3.5 py-2.5 rounded-2xl bg-[#12171D] border border-white/[0.08] backdrop-blur-xl shadow-lg">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="relative">
+              <img
+                src="/assets/shared/avatars/avatar-tunde.svg"
+                alt={opponentDisplayName}
+                className="h-9 w-9 rounded-full border border-white/20 bg-white/5"
+              />
+              <span className="absolute -bottom-1 -right-1 text-xs">🇳🇬</span>
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs font-black text-white truncate">
+                  @{opponentDisplayName}
+                </p>
+                {!isMyTurn && (
+                  <span className="rounded bg-amber-500/20 px-1.5 py-0.2 text-[9px] font-bold text-amber-300 animate-pulse">
+                    ● Turn
+                  </span>
+                )}
+              </div>
+              {/* Mini Pawn Counters */}
+              <div className="flex items-center gap-2 text-[10px] text-white/60 font-semibold pt-0.5">
+                <span>🏠 Home: <strong className="text-white">{oppHome}/4</strong></span>
+                <span>🎯 Active: <strong className="text-white">{oppTrack}</strong></span>
+                <span>🔒 Yard: <strong className="text-white">{oppYard}</strong></span>
+              </div>
+            </div>
           </div>
 
           <button
             type="button"
             onClick={handleShareTurn}
-            className="text-[11px] font-extrabold text-emerald-400 hover:text-emerald-300 px-2 py-1 rounded bg-emerald-500/10 border border-emerald-500/20"
+            className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 px-2.5 py-1 text-[11px] font-bold text-emerald-300 transition-all active:scale-95 shadow-sm"
           >
-            Share Turn
+            Share
           </button>
         </div>
 
-        {/* Animated Callout Toast */}
-        {calloutToast && (
-          <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 w-11/12 max-w-sm pointer-events-none transition-all">
-            <div className="p-3 rounded-2xl bg-gradient-to-r from-rose-600 via-indigo-600 to-emerald-600 text-white font-black text-center text-sm shadow-2xl border-2 border-white/40 animate-bounce">
-              {calloutToast}
-            </div>
-          </div>
-        )}
-
-        {/* Center: Precision Ludo Cross Board SVG */}
-        <div className="my-auto py-2 px-1">
+        {/* CENTER: Precision Ludo Cross Board SVG */}
+        <div className="my-auto py-1 px-1 flex items-center justify-center">
           <LudoBoardSvg
             tokens={currentState?.tokens ?? { red: [], green: [], yellow: [], blue: [] }}
             activeColor={activeColor}
@@ -316,40 +428,74 @@ export default function LudoArenaPage() {
           />
         </div>
 
-        {/* Bottom Roller Dock */}
-        <div className="w-full flex items-center justify-between px-4 py-3 bg-stone-900/90 border border-white/10 rounded-2xl backdrop-blur-xl">
-          {/* Instructions */}
-          <div className="flex flex-col">
-            <span className="text-xs font-black text-white">
-              {isMyTurn
-                ? turnPhase === 'roll'
-                  ? '🎲 Tap the 3D Dice to roll!'
-                  : '🎯 Tap any glowing pawn to move.'
-                : '⏳ Waiting for rival to play...'}
-            </span>
-            <span className="text-[11px] text-white/50">
-              {diceRoll !== null ? `Current Roll: ${diceRoll}` : 'Roll a 6 to exit home base'}
-            </span>
-          </div>
-
-          {/* Interactive 3D Dice Roller */}
-          <div className="flex items-center gap-3">
-            <LudoDiceSvg
-              value={diceRoll}
-              canRoll={isMyTurn && turnPhase === 'roll'}
-              onRoll={handleRollDice}
-              size={56}
-            />
-
-            {isMyTurn && turnPhase === 'roll' && (
-              <button
-                type="button"
-                onClick={handleRollDice}
-                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-indigo-600 text-white font-black text-xs shadow-glow-red hover:opacity-95 active:scale-95 transition-all"
+        {/* BOTTOM SECTION: Tactile 3D Animated Dice Roller Tray & Player Bar */}
+        <div className="w-full space-y-2">
+          {/* Roll Outcome Pill */}
+          {rollOutcome && (
+            <div className="flex justify-center px-2">
+              <div
+                className={`inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-xs font-black backdrop-blur-xl transition-all shadow-md ${rollOutcome.pillClass}`}
               >
-                ROLL!
-              </button>
-            )}
+                <span>{rollOutcome.text}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Tray Dock */}
+          <div className="flex items-center justify-between px-3.5 py-3 rounded-2xl bg-[#12171D] border border-white/[0.08] backdrop-blur-2xl shadow-xl">
+            {/* Player Info & Mini Pawn Counters */}
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="relative">
+                <img
+                  src="/assets/shared/avatars/avatar-chidi.svg"
+                  alt={myUsername}
+                  className="h-10 w-10 rounded-full border-2 border-emerald-500/50 bg-white/5"
+                />
+                <span className="absolute -bottom-1 -right-1 text-xs">🇳🇬</span>
+              </div>
+
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs font-black text-white truncate">
+                    @{myUsername}
+                  </p>
+                  {isMyTurn && (
+                    <span className="rounded bg-emerald-500/25 px-1.5 py-0.2 text-[9px] font-extrabold text-emerald-300 animate-pulse">
+                      ● Your Turn
+                    </span>
+                  )}
+                </div>
+
+                {/* 4 Mini Pawn Counters */}
+                <div className="flex items-center gap-2 text-[10px] text-white/60 font-semibold pt-0.5">
+                  <span>🏠 Home: <strong className="text-white">{myHome}/4</strong></span>
+                  <span>🎯 Active: <strong className="text-white">{myTrack}</strong></span>
+                  <span>🔒 Yard: <strong className="text-white">{myYard}</strong></span>
+                </div>
+              </div>
+            </div>
+
+            {/* Tactile 3D SVG Die Roller & CTA Button */}
+            <div className="flex items-center gap-3 shrink-0">
+              <LudoDiceSvg
+                value={effectiveDiceVal}
+                isRolling={isRolling}
+                canRoll={isMyTurn && turnPhase === 'roll'}
+                onRoll={handleRollDice}
+                size={68}
+              />
+
+              {isMyTurn && turnPhase === 'roll' && (
+                <button
+                  type="button"
+                  onClick={handleRollDice}
+                  disabled={isRolling}
+                  className="rounded-xl bg-[#00A884] hover:bg-[#008f6f] px-3.5 py-2.5 text-xs font-black text-[#06130F] shadow-glow-green transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {isRolling ? 'Rolling...' : '🎲 TAP TO ROLL'}
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -363,19 +509,19 @@ export default function LudoArenaPage() {
             winnerName={
               currentState.winnerColor === 'red'
                 ? myUsername
-                : 'Tunde (Ludo Bot)'
+                : opponentDisplayName
             }
             isDraw={false}
             myUserId="player-red"
             playerOne={{
               id: 'player-red',
               name: myUsername,
-              score: currentState.tokens.red.filter((t) => t.isHome).length,
+              score: myHome,
             }}
             playerTwo={{
               id: 'bot-green',
-              name: isDemo ? 'Tunde (Ludo Bot)' : 'Opponent',
-              score: currentState.tokens.green.filter((t) => t.isHome).length,
+              name: opponentDisplayName,
+              score: oppHome,
             }}
             onPlayAgain={() => {
               if (isDemo) {
@@ -384,6 +530,11 @@ export default function LudoArenaPage() {
                   { id: 'bot-green', displayName: 'Tunde (Ludo Bot)' },
                 ]);
                 setLocalState(fresh);
+                setRollOutcome({
+                  value: 1,
+                  text: '🎲 New match! Tap Die to roll',
+                  pillClass: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300',
+                });
               } else {
                 router.push('/games/ludo');
               }

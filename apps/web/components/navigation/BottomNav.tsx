@@ -40,7 +40,7 @@ export function BottomNav() {
               href={item.href}
               className={`group flex flex-col items-center justify-center rounded-2xl px-4 py-1.5 transition-all select-none active:scale-95 ${
                 isActive
-                  ? 'text-recess-purple-light font-extrabold'
+                  ? 'text-emerald-400 font-extrabold'
                   : 'text-white/50 hover:text-white'
               }`}
             >
@@ -48,7 +48,7 @@ export function BottomNav() {
                 aria-hidden="true"
                 className={`h-5 w-5 transition-colors ${
                   isActive
-                    ? 'bg-gradient-to-t from-recess-purple to-pink-400'
+                    ? 'bg-[#00A884]'
                     : 'bg-white/50 group-hover:bg-white'
                 }`}
                 style={{
@@ -67,7 +67,7 @@ export function BottomNav() {
                 {item.label}
               </span>
               {isActive && (
-                <span className="mt-0.5 h-1 w-4 rounded-full bg-recess-purple shadow-glow-purple" />
+                <span className="mt-0.5 h-1 w-4 rounded-full bg-[#00A884] shadow-glow-green" />
               )}
             </Link>
           );

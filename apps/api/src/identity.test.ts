@@ -259,4 +259,106 @@ describe('Identity and Authentication routes', () => {
     expect(secondBody.profile.maskedWhatsApp).toBe('+234 ••• ••89');
     expect(secondBody.sessionToken).toBeDefined();
   });
+
+  it('live-stats starts with 0 perGameCounts, 0 activeMatches, and ZERO dummy seed players', async () => {
+    const identityService = new IdentityService();
+    const app = buildApp(env, identityService);
+
+    const statsRes = await app.inject({
+      method: 'GET',
+      url: '/players/live-stats',
+    });
+    expect(statsRes.statusCode).toBe(200);
+    const stats = statsRes.json();
+
+    // Verify 0 dummy seed accounts
+    expect(stats.recentPlayers).toEqual([]);
+    expect(stats.totalRegisteredPlayers).toBe(0);
+    expect(stats.onlineNowCount).toBe(0);
+    expect(stats.activeMatchesCount).toBe(0);
+    expect(stats.perGameCounts).toEqual({
+      'word-battle': 0,
+      'mancala': 0,
+      'whot': 0,
+      'ludo': 0,
+    });
+
+    // Make sure fake seed players are nowhere in the output
+    const usernames = stats.recentPlayers.map((p: any) => p.username.toLowerCase());
+    expect(usernames).not.toContain('grandmaster');
+    expect(usernames).not.toContain('tunde');
+    expect(usernames).not.toContain('amina');
+    expect(usernames).not.toContain('efe');
+  });
+
+  it('POST /players/challenge creates a match session and adds an alert to target player inbox', async () => {
+    const identityService = new IdentityService();
+    const app = buildApp(env, identityService);
+
+    // Register challenger
+    const chalReg = await app.inject({
+      method: 'POST',
+      url: '/players/register',
+      payload: {
+        username: 'Challenger1',
+        whatsappNumber: '+2348011112222',
+      },
+    });
+    const challenger = chalReg.json();
+
+    // Register target
+    const targetReg = await app.inject({
+      method: 'POST',
+      url: '/players/register',
+      payload: {
+        username: 'TargetRival',
+        whatsappNumber: '+2348033334444',
+      },
+    });
+    const target = targetReg.json();
+
+    // Challenge target to Whot!
+    const challengeRes = await app.inject({
+      method: 'POST',
+      url: '/players/challenge',
+      payload: {
+        challengerId: challenger.user.id,
+        challengerUsername: 'Challenger1',
+        targetPlayerId: target.profile.id,
+        targetUsername: 'TargetRival',
+        gameType: 'whot',
+      },
+    });
+    expect(challengeRes.statusCode).toBe(200);
+    const challengeBody = challengeRes.json();
+    expect(challengeBody.publicId).toBeDefined();
+    expect(challengeBody.matchUrl).toContain('/games/whot/');
+    expect(challengeBody.notificationId).toBeDefined();
+    expect(challengeBody.whatsappDirectUrl).toContain('whatsapp://send?phone=2348033334444');
+
+    // Verify target receives the challenge notification in inbox
+    const notifRes = await app.inject({
+      method: 'GET',
+      url: `/players/notifications?userId=${target.user.id}`,
+    });
+    expect(notifRes.statusCode).toBe(200);
+    const notifications = notifRes.json();
+    expect(notifications.length).toBe(1);
+    expect(notifications[0].challengerUsername).toBe('Challenger1');
+    expect(notifications[0].gameType).toBe('whot');
+    expect(notifications[0].matchUrl).toBe(challengeBody.matchUrl);
+
+    // Dismiss notification
+    const dismissRes = await app.inject({
+      method: 'POST',
+      url: `/players/notifications/${challengeBody.notificationId}/dismiss`,
+    });
+    expect(dismissRes.statusCode).toBe(200);
+
+    const clearedRes = await app.inject({
+      method: 'GET',
+      url: `/players/notifications?userId=${target.user.id}`,
+    });
+    expect(clearedRes.json().length).toBe(0);
+  });
 });

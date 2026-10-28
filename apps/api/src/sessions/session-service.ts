@@ -726,4 +726,11 @@ export class SessionService {
 
     return this.getSession(rematchPublicId, userId);
   }
+
+  async getActiveSessionStats(): Promise<{
+    perGameCounts: Record<string, number>;
+    activeMatchesCount: number;
+  }> {
+    return this.repo.countActiveSessionsByGame();
+  }
 }

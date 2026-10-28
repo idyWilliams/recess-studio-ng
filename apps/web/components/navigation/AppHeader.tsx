@@ -55,6 +55,14 @@ export function AppHeader() {
   const [activeMatchLink, setActiveMatchLink] = useState<string | null>(null);
   const [canNativeInstall, setCanNativeInstall] = useState(false);
   const [notificationPerm, setNotificationPerm] = useState<NotificationPermission | 'unsupported'>('default');
+  const [activeChallenge, setActiveChallenge] = useState<{
+    id: string;
+    challengerUsername: string;
+    gameType: string;
+    gameName: string;
+    matchUrl: string;
+    message: string;
+  } | null>(null);
 
   useEffect(() => {
     setWallet(loadStoredWallet());
@@ -98,6 +106,45 @@ export function AppHeader() {
       };
     }
   }, []);
+
+  // Poll for direct player challenge notifications
+  useEffect(() => {
+    const targetId = profile?.userId || profile?.id;
+    if (!targetId || typeof window === 'undefined') return;
+
+    let isMounted = true;
+    const pollNotifications = async () => {
+      try {
+        const res = await fetch(`/backend-api/players/notifications?userId=${targetId}`);
+        if (!res.ok) return;
+        const list = await res.json();
+        if (isMounted && Array.isArray(list) && list.length > 0) {
+          const latest = list[0];
+          setActiveChallenge((prev) => {
+            if (prev?.id !== latest.id) {
+              void notifyTurnReady({
+                title: `⚔️ @${latest.challengerUsername} challenged you!`,
+                body: `Tap to accept duel in ${latest.gameName}`,
+                matchUrl: latest.matchUrl,
+                tag: `duel-${latest.id}`,
+              });
+              triggerHaptic('heavy');
+            }
+            return latest;
+          });
+        }
+      } catch {
+        // silent polling catch
+      }
+    };
+
+    void pollNotifications();
+    const interval = setInterval(pollNotifications, 5000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [profile?.userId, profile?.id]);
 
   const handleInstallClick = async () => {
     triggerHaptic('selection');
@@ -153,30 +200,82 @@ export function AppHeader() {
 
   return (
     <>
+      {/* Live Direct Challenge Alert Banner */}
+      {activeChallenge && (
+        <aside
+          aria-label="Direct player challenge alert"
+          className="border-b border-[#008f6f] bg-[#00A884] px-3.5 py-2 text-[#06130F] shadow-lg transition-all animate-in slide-in-from-top duration-300"
+        >
+          <div className="mx-auto flex max-w-lg items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-black opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-black" />
+              </span>
+              <p className="text-xs font-bold truncate">
+                ⚔️ <strong>@{activeChallenge.challengerUsername}</strong> challenged you to{' '}
+                {activeChallenge.gameName}!
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Link
+                href={activeChallenge.matchUrl}
+                onClick={async () => {
+                  try {
+                    await fetch(`/backend-api/players/notifications/${activeChallenge.id}/dismiss`, {
+                      method: 'POST',
+                    });
+                  } catch {}
+                  setActiveChallenge(null);
+                }}
+                className="rounded-lg bg-[#0B0E11] px-2.5 py-1 text-xs font-black text-white hover:bg-[#12171D] active:scale-95 transition-all"
+              >
+                Accept Duel &rarr;
+              </Link>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await fetch(`/backend-api/players/notifications/${activeChallenge.id}/dismiss`, {
+                      method: 'POST',
+                    });
+                  } catch {}
+                  setActiveChallenge(null);
+                }}
+                className="p-1 text-xs font-bold text-[#06130F]/70 hover:text-[#06130F]"
+                aria-label="Dismiss challenge"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </aside>
+      )}
+
       {/* Active Match Handoff Banner */}
       {activeMatchLink && !pathname.startsWith('/games/word-battle') && (
-        <aside aria-label="Active match banner" className="bg-gradient-to-r from-recess-purple via-emerald-600 to-recess-blue px-3 py-1.5 text-center shadow-lg transition-all">
+        <aside aria-label="Active match banner" className="border-b border-emerald-500/20 bg-[#12171D] px-3 py-1.5 text-center shadow-lg transition-all">
           <Link
             href={activeMatchLink}
-            className="flex items-center justify-center gap-2 text-xs font-black text-white hover:underline active:scale-95"
+            className="flex items-center justify-center gap-2 text-xs font-black text-emerald-400 hover:underline active:scale-95"
           >
             <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
             </span>
             <span>⚔️ Active Match Waiting — Tap to Resume Here in Fullscreen &rarr;</span>
           </Link>
         </aside>
       )}
 
-      <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-[#05070B]/80 backdrop-blur-2xl pt-[env(safe-area-inset-top,0px)]">
+      <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-[#0B0E11]/90 backdrop-blur-2xl pt-[env(safe-area-inset-top,0px)]">
         <div className="mx-auto flex max-w-lg items-center justify-between px-4 py-3 sm:px-6">
-          {/* Logo */}
+          {/* Logo: Brushed WhatsApp Emerald */}
           <Link
             href="/"
             className="flex items-center gap-2.5 transition-transform active:scale-95"
           >
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-recess-purple to-recess-blue text-white shadow-glow-purple select-none">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#00A884] text-[#08120E] shadow-glow-green select-none">
               <span className="text-base font-black tracking-tight">R</span>
             </div>
             <div>
@@ -312,7 +411,7 @@ export function AppHeader() {
               <button
                 type="button"
                 onClick={handleInstallClick}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-recess-blue py-3 text-xs font-black text-white shadow-glow-emerald transition-all active:scale-95"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#00A884] hover:bg-[#008f6f] py-3 text-xs font-black text-[#06130F] shadow-glow-green transition-all active:scale-95"
               >
                 <span>⚡</span>
                 <span>1-Tap Install Recess App</span>
