@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import {
-  AVAILABLE_AVATARS,
   AVAILABLE_FLAGS,
   loadStoredCustomization,
   loadStoredWallet,
@@ -14,6 +13,7 @@ import {
 import { storeIdentity } from '@/lib/identity-store';
 import { useIdentity } from '@/hooks/use-identity';
 import { normalizeWhatsAppNumber, USERNAME_REGEX } from '@recess/shared';
+import { PlayerMedallion } from '@/components/ui/PlayerMedallion';
 
 interface IdentityModalProps {
   isOpen: boolean;
@@ -49,11 +49,10 @@ export function IdentityModal({
   );
   const [selectedDialCode, setSelectedDialCode] = useState('+234');
   const [rawPhone, setRawPhone] = useState('');
-  const [selectedAvatar, setSelectedAvatar] = useState(customization.avatarId);
   const [selectedFlag, setSelectedFlag] = useState(customization.flag);
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('✓ Profile Saved!');
+  const [successMessage, setSuccessMessage] = useState('Profile Saved');
 
   // Pre-fill from query params (?wa=... or ?phone=...)
   useEffect(() => {
@@ -93,7 +92,7 @@ export function IdentityModal({
     const cleanDigits = rawPhone.replace(/[^\d]/g, '');
     if (cleanDigits.length > 0) {
       if (cleanDigits.length < 7) {
-        setError('Please enter a valid WhatsApp phone number (at least 7 digits)');
+        setError('Please enter a valid phone number (at least 7 digits)');
         return;
       }
       fullPhone = normalizeWhatsAppNumber(`${selectedDialCode}${cleanDigits}`);
@@ -104,12 +103,10 @@ export function IdentityModal({
 
     setError(null);
 
-    // Find country name for flag
     const flagObj = AVAILABLE_FLAGS.find((f) => f.flag === selectedFlag);
 
     const updatedCustom: PlayerCustomization = {
       ...customization,
-      avatarId: selectedAvatar,
       flag: selectedFlag,
       countryName: flagObj?.name ?? 'Nigeria',
     };
@@ -117,7 +114,6 @@ export function IdentityModal({
     storeCustomization(updatedCustom);
     setCustomization(updatedCustom);
 
-    // Make sure starter wallet is active
     const activeWallet: WalletState = {
       ...wallet,
       starterClaimed: true,
@@ -126,25 +122,20 @@ export function IdentityModal({
     storeWallet(activeWallet);
     setWallet(activeWallet);
 
-    const currentAvatarUrl =
-      AVAILABLE_AVATARS.find((a) => a.id === selectedAvatar)?.url ||
-      '/assets/shared/avatars/avatar-chidi.svg';
-
     try {
       const res = await register.mutateAsync({
         username: cleanUsername,
         whatsappNumber: fullPhone,
         displayName: displayName || cleanUsername,
-        avatarId: selectedAvatar,
+        avatarId: 'medallion',
         countryFlag: selectedFlag,
-        avatarUrl: currentAvatarUrl,
       });
 
       if (res.profile?.username) {
         setUsername(res.profile.username);
       }
       setSuccessMessage(
-        fullPhone ? '✓ WhatsApp Linked & Profile Synced!' : '✓ Profile Updated!',
+        fullPhone ? 'WhatsApp Linked & Profile Synced' : 'Profile Updated',
       );
     } catch {
       // Offline fallback: save locally
@@ -155,9 +146,9 @@ export function IdentityModal({
           userId: `offline_user_${Date.now()}`,
           username: cleanUsername,
           displayName: displayName || cleanUsername,
-          avatarId: selectedAvatar,
+          avatarId: 'medallion',
           countryFlag: selectedFlag,
-          avatarUrl: currentAvatarUrl,
+          avatarUrl: null,
           maskedWhatsApp: fullPhone ? '••••••' : null,
           whatsappVerified: Boolean(fullPhone),
           createdAt: new Date().toISOString(),
@@ -165,7 +156,7 @@ export function IdentityModal({
         },
         expiresAt: new Date(Date.now() + 86400000 * 30).toISOString(),
       });
-      setSuccessMessage('✓ Saved to Local Session');
+      setSuccessMessage('Saved to Local Session');
     }
 
     setIsSuccess(true);
@@ -176,39 +167,34 @@ export function IdentityModal({
     setTimeout(() => {
       setIsSuccess(false);
       onClose();
-    }, 700);
+    }, 600);
   };
-
-  const currentAvatarUrl =
-    AVAILABLE_AVATARS.find((a) => a.id === selectedAvatar)?.url ||
-    '/assets/shared/avatars/avatar-chidi.svg';
 
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
     >
-      <div className="relative w-full max-w-md my-auto overflow-hidden rounded-3xl border border-white/10 bg-[#0B0F19]/95 p-5 sm:p-6 shadow-2xl backdrop-blur-2xl text-white">
-        {/* Ambient Top Glow */}
-        <div className="pointer-events-none absolute -top-24 left-1/2 h-48 w-72 -translate-x-1/2 rounded-full bg-emerald-500/20 blur-3xl" />
-
-        {/* Header Bar */}
-        <div className="flex items-center justify-between pb-3.5 border-b border-white/10">
+      <div className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-white/[0.08] bg-[#121214] p-6 shadow-2xl backdrop-blur-2xl text-[#F4F4F0] space-y-5">
+        {/* Header */}
+        <div className="flex items-center justify-between pb-3 border-b border-white/[0.06]">
           <div>
-            <span className="text-[10px] font-black uppercase tracking-widest text-[#00A884]">
-              {isOnboarding ? 'WhatsApp Onboarding' : 'Player Identity'}
-            </span>
-            <h2 id="modal-title" className="text-xl font-extrabold text-white">
-              {isOnboarding ? 'Connect WhatsApp & Enter' : 'Profile & Arcade Wallet'}
+            <h2 id="modal-title" className="text-base font-medium text-[#F4F4F0]">
+              {isOnboarding ? 'Join the Lounge' : 'Player Profile'}
             </h2>
+            <p className="text-xs text-[#8E8E93] mt-0.5">
+              {isOnboarding
+                ? 'Your public gaming identity on Recess'
+                : 'Manage handle and regional badge'}
+            </p>
           </div>
           {!isOnboarding && (
             <button
               type="button"
               onClick={onClose}
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-white/60 hover:bg-white/10 hover:text-white transition-all active:scale-95"
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.05] text-[#8E8E93] hover:text-[#F4F4F0] transition-colors"
               aria-label="Close modal"
             >
               ✕
@@ -216,32 +202,65 @@ export function IdentityModal({
           )}
         </div>
 
-        {/* Sync & Account Recovery Hint */}
-        <div className="mt-3.5 flex items-center gap-2.5 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-200">
-          <span className="text-base">🔄</span>
-          <p className="leading-snug">
-            <strong>Returning Player?</strong> Entering your WhatsApp number restores your existing gamer tag, rating, and wallet across any browser or Home Screen app!
+        {/* Live Medallion Preview */}
+        <div className="flex flex-col items-center justify-center py-2 space-y-2">
+          <PlayerMedallion
+            size="xl"
+            username={username || 'Player'}
+            displayName={displayName}
+            countryFlag={selectedFlag}
+            showFlag
+          />
+          <p className="text-xs text-[#8E8E93]">
+            {username ? `@${username}` : '@handle'}
           </p>
         </div>
 
-        <form onSubmit={handleSave} className="mt-4 space-y-4">
+        <form onSubmit={handleSave} className="space-y-4">
+          {/* Gamer Handle */}
+          <div>
+            <label
+              htmlFor="username-input"
+              className="block text-xs font-medium text-[#8E8E93] uppercase tracking-wider"
+            >
+              Username Handle
+            </label>
+            <div className="relative mt-1.5">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-sm text-[#52525B]">
+                @
+              </span>
+              <input
+                id="username-input"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="handle"
+                maxLength={32}
+                className="w-full rounded-xl border border-white/[0.08] bg-[#18181B] py-2.5 pl-8 pr-3 text-sm text-[#F4F4F0] placeholder-[#52525B] transition-colors focus:border-white/30 focus:outline-none"
+              />
+            </div>
+            {error && (
+              <p className="mt-1 text-xs text-rose-400">{error}</p>
+            )}
+          </div>
+
           {/* WhatsApp Phone Number Section */}
           <div>
             <label
               htmlFor="wa-phone-input"
-              className="block text-xs font-black uppercase tracking-wider text-emerald-300"
+              className="block text-xs font-medium text-[#8E8E93] uppercase tracking-wider"
             >
-              WhatsApp Phone Number {isOnboarding && <span className="text-rose-400">*</span>}
+              WhatsApp Number {isOnboarding && <span className="text-[#C8B28A]">*</span>}
             </label>
-            <div className="mt-1 flex gap-2">
+            <div className="mt-1.5 flex gap-2">
               <select
                 value={selectedDialCode}
                 onChange={(e) => setSelectedDialCode(e.target.value)}
-                className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-2 text-xs font-bold text-white outline-none focus:border-emerald-500"
+                className="rounded-xl border border-white/[0.08] bg-[#18181B] px-3 py-2.5 text-xs text-[#F4F4F0] outline-none focus:border-white/30"
                 aria-label="Country dial code"
               >
                 {DIAL_CODES.map((d) => (
-                  <option key={d.code} value={d.code} className="bg-[#0B0F19] text-white">
+                  <option key={d.code} value={d.code} className="bg-[#121214] text-[#F4F4F0]">
                     {d.flag} {d.code}
                   </option>
                 ))}
@@ -252,85 +271,20 @@ export function IdentityModal({
                 value={rawPhone}
                 onChange={(e) => setRawPhone(e.target.value)}
                 placeholder="801 234 5678"
-                className="min-w-0 flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-white placeholder-white/20 transition-all focus:border-emerald-500 focus:bg-white/10 focus:outline-none"
+                className="min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-[#18181B] px-3 py-2.5 text-sm text-[#F4F4F0] placeholder-[#52525B] transition-colors focus:border-white/30 focus:outline-none"
               />
             </div>
-
-            {/* Privacy Guarantee Badge */}
-            <div className="mt-1.5 flex items-start gap-1.5 text-[11px] text-white/50 leading-relaxed">
-              <span className="text-emerald-400 shrink-0">🔒</span>
-              <span>
-                <strong className="text-emerald-300">100% Private:</strong> Recess never displays your phone number to opponents. Players only see your @username.
-              </span>
-            </div>
+            <p className="mt-1 text-[11px] text-[#52525B]">
+              Private &bull; Used only for automated turn notifications. Opponents see only your @handle.
+            </p>
           </div>
 
-          {/* Gamer Handle */}
+          {/* Regional Badge Selector */}
           <div>
-            <label
-              htmlFor="username-input"
-              className="block text-xs font-bold uppercase tracking-wider text-white/70"
-            >
-              Gamer Handle (@username)
+            <label className="block text-xs font-medium text-[#8E8E93] uppercase tracking-wider">
+              Country Badge
             </label>
-            <div className="relative mt-1">
-              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-sm font-bold text-white/40">
-                @
-              </span>
-              <input
-                id="username-input"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="your_handle"
-                maxLength={32}
-                className="w-full rounded-xl border border-white/10 bg-white/5 py-2 pl-8 pr-3 text-sm font-semibold text-white placeholder-white/20 transition-all focus:border-[#00A884] focus:bg-white/10 focus:outline-none"
-              />
-            </div>
-            {error && (
-              <p className="mt-1 text-xs font-semibold text-rose-400">{error}</p>
-            )}
-          </div>
-
-          {/* Avatar Selector */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-white/70">
-              Select Avatar
-            </label>
-            <div className="mt-2 grid grid-cols-4 gap-2">
-              {AVAILABLE_AVATARS.map((avatar) => {
-                const isSelected = selectedAvatar === avatar.id;
-                return (
-                  <button
-                    key={avatar.id}
-                    type="button"
-                    onClick={() => setSelectedAvatar(avatar.id)}
-                    className={`flex flex-col items-center gap-1.5 rounded-2xl border p-2 transition-all active:scale-95 ${
-                      isSelected
-                        ? 'border-emerald-400 bg-emerald-500/20 shadow-glow-emerald'
-                        : 'border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.06]'
-                    }`}
-                  >
-                    <img
-                      src={avatar.url}
-                      alt={avatar.label}
-                      className="h-10 w-10 rounded-full"
-                    />
-                    <span className="text-[10px] font-bold text-white/80 truncate max-w-full">
-                      {avatar.label}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Country Flag Badge Selector */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-white/70">
-              National Flag Badge
-            </label>
-            <div className="mt-2 flex flex-wrap gap-1.5">
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
               {AVAILABLE_FLAGS.map((flagItem) => {
                 const isSelected = selectedFlag === flagItem.flag;
                 return (
@@ -338,13 +292,13 @@ export function IdentityModal({
                     key={flagItem.code}
                     type="button"
                     onClick={() => setSelectedFlag(flagItem.flag)}
-                    className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-xs font-bold transition-all active:scale-95 ${
+                    className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors active:scale-95 ${
                       isSelected
-                        ? 'border-[#00A884] bg-[#00A884]/20 text-white shadow-glow-green'
-                        : 'border-white/10 bg-white/[0.03] text-white/70 hover:border-white/20 hover:text-white'
+                        ? 'border-white/40 bg-white/10 text-[#F4F4F0]'
+                        : 'border-white/[0.06] bg-[#18181B] text-[#8E8E93] hover:text-[#F4F4F0]'
                     }`}
                   >
-                    <span className="text-sm">{flagItem.flag}</span>
+                    <span>{flagItem.flag}</span>
                     <span className="text-[10px]">{flagItem.code}</span>
                   </button>
                 );
@@ -352,20 +306,20 @@ export function IdentityModal({
             </div>
           </div>
 
-          {/* Save / Confirmation Button */}
+          {/* Save / Confirmation Button: Solid Warm Alabaster */}
           <div className="pt-2">
             <button
               type="submit"
               disabled={register.isPending}
-              className="w-full rounded-xl bg-[#00A884] hover:bg-[#008f6f] py-3 text-sm font-extrabold text-[#06130F] shadow-glow-green transition-all hover:opacity-95 active:scale-[0.98] disabled:opacity-50"
+              className="w-full rounded-xl bg-[#F4F4F0] hover:bg-white py-3 text-sm font-medium text-[#0A0A0B] transition-all active:scale-[0.98] disabled:opacity-50"
             >
               {isSuccess
                 ? successMessage
                 : register.isPending
-                ? 'Syncing with Recess...'
+                ? 'Syncing profile...'
                 : isOnboarding
-                ? 'Connect & Enter Arcade 🚀'
-                : 'Save Player Profile'}
+                ? 'Continue to Lounge'
+                : 'Save Changes'}
             </button>
           </div>
         </form>

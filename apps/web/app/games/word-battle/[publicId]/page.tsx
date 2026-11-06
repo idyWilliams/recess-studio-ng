@@ -92,6 +92,11 @@ export default function WordBattleArenaPage() {
     session?.status === 'active' && session.currentPlayerId === myUserId;
   const matchStatus = session ? getMatchStatus(session, myUserId) : null;
   const opponentName = players.find((player) => player.userId !== myUserId)?.username;
+  const isBotOpponent = Boolean(
+    opponentName?.toLowerCase().includes('bot') ||
+    opponentName === 'RecessBot' ||
+    publicId === 'demo-match'
+  );
 
   const selectedTiles = useMemo<BoardTile[]>(() => {
     if (!state) return [];
@@ -223,6 +228,66 @@ export default function WordBattleArenaPage() {
       expectedStateVersion: session.stateVersion,
     });
   }, [remainingMs, session, sessionToken, publicId, expireTurn]);
+
+  // ── Smart Bot Turn Automation (in vs-bot matches) ───────────────────────
+  const botPlayedVersionRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (
+      !isBotOpponent ||
+      myTurn ||
+      !session ||
+      session.status !== 'active' ||
+      !state ||
+      !sessionToken
+    ) {
+      return;
+    }
+    if (botPlayedVersionRef.current === session.stateVersion) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      botPlayedVersionRef.current = session.stateVersion;
+      const allTiles = state.board.flat();
+      let chosenTiles: BoardTile[] = [];
+      const commonWords = [
+        'CAT', 'DOG', 'STAR', 'WIN', 'GAME', 'PLAY', 'BIRD', 'SUN', 'WAR', 'FIRE',
+        'GOLD', 'LION', 'KING', 'MOON', 'COOL', 'NICE', 'WORD', 'FAST',
+      ];
+      for (const w of commonWords) {
+        const letters = w.split('');
+        const matched: BoardTile[] = [];
+        const used = new Set<string>();
+        for (const ch of letters) {
+          const t = allTiles.find((tile) => tile.letter === ch && !used.has(tile.id));
+          if (t) {
+            matched.push(t);
+            used.add(t.id);
+          }
+        }
+        if (matched.length === letters.length) {
+          chosenTiles = matched;
+          break;
+        }
+      }
+      if (chosenTiles.length === 0 && allTiles.length >= 3) {
+        chosenTiles = allTiles.slice(0, 3);
+      }
+      if (chosenTiles.length > 0) {
+        const botWord = chosenTiles.map((t) => t.letter).join('');
+        submitMove.mutate({
+          sessionToken,
+          expectedStateVersion: session.stateVersion,
+          move: {
+            type: 'word',
+            word: botWord,
+            path: chosenTiles.map((t) => ({ row: t.row, col: t.col })),
+          },
+        });
+      }
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [isBotOpponent, myTurn, session, state, sessionToken, submitMove]);
 
   // ── Handlers ────────────────────────────────────────────────────────────
   const handleTileClick = useCallback(
@@ -606,6 +671,10 @@ export default function WordBattleArenaPage() {
       historyEntries={chatHistoryEntries}
       onReturnToWhatsApp={handleReturnToWhatsApp}
       onSendWhatsAppChat={handleSendWhatsAppChat}
+      isBotPlaying={!myTurn && isBotOpponent && session?.status === 'active'}
+      syncStatus={submitMove.isPending ? 'syncing' : (myTurn ? 'idle' : 'synced')}
+      turnPingMessage={!myTurn && !isBotOpponent && session?.status === 'active' ? '✅ Move saved & @opponent pinged!' : null}
+      onSendTurnPing={handleWhatsAppNudge}
     >
       <ArenaShell
         embedded

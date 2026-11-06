@@ -44,6 +44,8 @@ export default function WhotArenaPage() {
   const [session, setSession] = useState<any>(null);
   const [localState, setLocalState] = useState<WhotState | null>(null);
   const [isBotPlaying, setIsBotPlaying] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced'>('idle');
+  const [turnPingMessage, setTurnPingMessage] = useState<string | null>(null);
   const [calloutToast, setCalloutToast] = useState<string | null>(null);
   const [selected20CardId, setSelected20CardId] = useState<string | null>(null);
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
@@ -57,7 +59,7 @@ export default function WhotArenaPage() {
       const initial = whotEngine.createInitialState(
         [
           { id: 'player-1', displayName: myUsername },
-          { id: 'bot-naija', displayName: 'Chidi (Smart Bot)' },
+          { id: 'bot-naija', displayName: 'NaijaBot' },
         ],
         { houseRules: activeHouseRules, seed: Date.now() },
       );
@@ -107,23 +109,24 @@ export default function WhotArenaPage() {
     }, 3200);
   };
 
-  // Bot Turn Automation (in demo mode)
+  // Bot Turn Automation (handles multi-turn special cards Hold On/Pick Two reliably)
   useEffect(() => {
-    if (
+    const isBotTurn = Boolean(
       isDemo &&
       currentState &&
       !currentState.isGameOver &&
-      currentState.currentPlayerId === 'bot-naija' &&
-      !isBotPlaying
-    ) {
+      currentState.currentPlayerId === 'bot-naija'
+    );
+
+    if (isBotTurn && !isBotPlaying) {
       setIsBotPlaying(true);
       const timer = setTimeout(() => {
         try {
-          const botHand = currentState.hands['bot-naija'] ?? [];
+          const botHand = currentState!.hands['bot-naija'] ?? [];
           let chosenMove: any = null;
 
           // If penalty pending, bot tries to defend
-          if (currentState.pendingDrawCount > 0) {
+          if (currentState!.pendingDrawCount > 0) {
             const defenseCard = botHand.find(
               (c) =>
                 (c.number === 2 && activeHouseRules.rule2PickTwo) ||
@@ -139,12 +142,11 @@ export default function WhotArenaPage() {
             // Find valid playable card
             const validCard = botHand.find((c) => {
               if (c.number === 20 || c.suit === 'whot') return true;
-              return c.suit === currentState.activeSuit || c.number === currentState.activeNumber;
+              return c.suit === currentState!.activeSuit || c.number === currentState!.activeNumber;
             });
 
             if (validCard) {
               if (validCard.number === 20 || validCard.suit === 'whot') {
-                // Pick most common suit in bot hand
                 const suits: WhotDeclaredSuit[] = ['circle', 'triangle', 'cross', 'square', 'star'];
                 const randomSuit = suits[Math.floor(Math.random() * suits.length)]!;
                 chosenMove = { type: 'play', cardId: validCard.id, declaredSuit: randomSuit };
@@ -156,20 +158,34 @@ export default function WhotArenaPage() {
             }
           }
 
-          const next = whotEngine.applyMove(currentState, chosenMove, 'bot-naija');
+          const next = whotEngine.applyMove(currentState!, chosenMove, 'bot-naija');
           setLocalState(next);
           if (next.lastActionDescription) {
             triggerCallout(`🤖 ${next.lastActionDescription}`);
           }
         } catch {
-          // Pass turn on error
+          // Watchdog fallback: draw market to prevent freeze
+          try {
+            const fallback = whotEngine.applyMove(currentState!, { type: 'draw' }, 'bot-naija');
+            setLocalState(fallback);
+          } catch {
+            // ignore
+          }
         } finally {
           setIsBotPlaying(false);
         }
-      }, 1200);
+      }, 750);
       return () => clearTimeout(timer);
     }
-  }, [isDemo, currentState, isBotPlaying, activeHouseRules]);
+  }, [
+    isDemo,
+    currentState?.currentPlayerId,
+    currentState?.turnCount,
+    currentState?.pendingDrawCount,
+    currentState?.discardPile?.length,
+    isBotPlaying,
+    activeHouseRules,
+  ]);
 
   // Handle Play Card
   const handlePlayCard = (card: WhotCard) => {
@@ -199,15 +215,19 @@ export default function WhotArenaPage() {
   const executeMove = async (move: any) => {
     if (!currentState) return;
     triggerHaptic('light');
+    setSyncStatus('syncing');
 
     if (isDemo) {
       try {
         const next = whotEngine.applyMove(currentState, move, 'player-1');
         setLocalState(next);
+        setSyncStatus('synced');
+        setTimeout(() => setSyncStatus('idle'), 2000);
         if (next.lastActionDescription) {
           triggerCallout(next.lastActionDescription);
         }
       } catch (err: any) {
+        setSyncStatus('idle');
         triggerCallout(`⚠️ ${err?.message || 'Illegal Move'}`);
       }
     } else if (sessionToken) {
@@ -220,7 +240,11 @@ export default function WhotArenaPage() {
         );
         setSession(updated);
         setLocalState(updated.state as unknown as WhotState);
+        setSyncStatus('synced');
+        setTurnPingMessage('✅ Move saved & @opponent pinged!');
+        setTimeout(() => setSyncStatus('idle'), 3000);
       } catch (err: any) {
+        setSyncStatus('idle');
         triggerCallout(`⚠️ ${err?.message || 'Move failed'}`);
       }
     }
@@ -249,7 +273,7 @@ export default function WhotArenaPage() {
           isCurrentTurn: isMyTurn,
         },
         playerTwo: {
-          name: 'Chidi',
+          name: isDemo ? 'NaijaBot' : 'Opponent',
           score: opponentHandCount,
           isCurrentTurn: !isMyTurn,
         },
@@ -264,49 +288,53 @@ export default function WhotArenaPage() {
   return (
     <WhatsAppMiniAppShell
       gameTitle="Whot! Naija Classic"
-      opponentName={isDemo ? 'Chidi (Smart Bot)' : 'Opponent'}
+      opponentName={isDemo ? 'NaijaBot' : 'Opponent'}
       opponentScore={opponentHandCount}
       myScore={myHand.length}
       myTurn={isMyTurn}
       timeLeftSec={isMyTurn ? 15 : null}
       onReturnToWhatsApp={handleShareTurn}
+      isBotPlaying={isBotPlaying}
+      syncStatus={syncStatus}
+      turnPingMessage={turnPingMessage}
+      onSendTurnPing={handleShareTurn}
     >
       <div className="relative min-h-[82vh] flex flex-col justify-between py-2 select-none overflow-hidden">
         {/* Top Active House Rules Ribbon */}
-        <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-stone-900/80 border border-white/10 backdrop-blur-md">
-          <div className="flex items-center gap-1.5 overflow-x-auto text-[11px] font-bold">
-            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
-              🇳🇬 Naija Whot
+        <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-[#121214] border border-white/[0.06] shadow-sm">
+          <div className="flex items-center gap-1.5 overflow-x-auto text-xs font-medium">
+            <span className="px-2 py-0.5 rounded-md bg-[#161619] text-[#F4F4F0] border border-white/[0.08]">
+              Whot Classic
             </span>
             {activeHouseRules.excludeWhot20 ? (
-              <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                🚫 No 20s
+              <span className="px-2 py-0.5 rounded-md bg-[#161619] text-[#8E8E93] border border-white/[0.06]">
+                No 20s
               </span>
             ) : (
-              <span className="px-2 py-0.5 rounded-md bg-stone-800 text-stone-300">
-                👑 20 Wild
+              <span className="px-2 py-0.5 rounded-md bg-[#161619] text-[#8E8E93] border border-white/[0.06]">
+                20 Wild
               </span>
             )}
             {activeHouseRules.rule14GoGen && (
-              <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300">
-                🛒 14 Go Gen
+              <span className="px-2 py-0.5 rounded-md bg-[#161619] text-[#8E8E93] border border-white/[0.06]">
+                14 Go Gen
               </span>
             )}
             {activeHouseRules.rule7Variant === 'pick_two' && (
-              <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300">
-                7️⃣ Pick 2
+              <span className="px-2 py-0.5 rounded-md bg-[#161619] text-[#C8B28A] border border-[#C8B28A]/30">
+                7 Pick 2
               </span>
             )}
             {currentState && currentState.pendingDrawCount > 0 && (
-              <span className="px-2 py-0.5 rounded-md bg-red-600 text-white font-black animate-pulse">
-                🔥 PICK +{currentState.pendingDrawCount} PENDING!
+              <span className="px-2 py-0.5 rounded-md bg-rose-500/20 border border-rose-500/40 text-rose-300 font-medium">
+                Pick +{currentState.pendingDrawCount} Pending
               </span>
             )}
           </div>
           <button
             type="button"
             onClick={handleShareTurn}
-            className="text-[11px] font-extrabold text-emerald-400 hover:text-emerald-300 px-2 py-1 rounded bg-emerald-500/10 border border-emerald-500/20 shrink-0 ml-2"
+            className="text-xs font-medium text-[#E4E4E0] hover:text-[#F4F4F0] px-2.5 py-1 rounded-lg bg-[#1A1A1E] border border-white/[0.08] shrink-0 ml-2 transition-colors"
           >
             Share Turn
           </button>
@@ -326,7 +354,7 @@ export default function WhotArenaPage() {
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
             <span className="text-xs font-black text-white/80">
-              {isDemo ? 'Chidi (Smart Bot)' : 'Opponent'}
+              {isDemo ? 'NaijaBot' : 'Opponent'}
             </span>
             <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-white/10 text-white/70">
               {opponentHandCount} Cards
@@ -443,10 +471,9 @@ export default function WhotArenaPage() {
         {/* Whot 20 Suit Picker Modal */}
         {selected20CardId && (
           <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="bg-stone-900 border-2 border-amber-400/60 p-6 rounded-3xl max-w-sm w-full text-center space-y-4 shadow-2xl">
-              <span className="text-3xl">👑</span>
-              <h3 className="text-xl font-black text-white">WHOT 20! I Need...</h3>
-              <p className="text-xs text-white/60">
+            <div className="bg-[#121214] border border-white/[0.08] p-6 rounded-2xl max-w-sm w-full text-center space-y-3 shadow-2xl">
+              <h3 className="text-lg font-medium text-[#F4F4F0]">Declare Suit</h3>
+              <p className="text-xs text-[#8E8E93]">
                 Select the suit you want the next player to follow:
               </p>
 

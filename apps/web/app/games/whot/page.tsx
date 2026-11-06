@@ -8,6 +8,7 @@ import { createGameSession, ApiClientError } from '@/lib/api-client';
 import { useIdentity } from '@/hooks/use-identity';
 import { RegisterCard } from '@/components/identity/RegisterCard';
 import { WHOT_RULE_PRESETS, type WhotHouseRules } from '@recess/game-whot';
+import { triggerHaptic } from '@/lib/haptics';
 
 export default function WhotLobbyPage() {
   const router = useRouter();
@@ -19,6 +20,7 @@ export default function WhotLobbyPage() {
   });
   const [isCustomizing, setIsCustomizing] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isBotStarting, setIsBotStarting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handlePresetSelect = (presetKey: keyof typeof WHOT_RULE_PRESETS) => {
@@ -38,6 +40,7 @@ export default function WhotLobbyPage() {
 
   const handleStartMatch = async () => {
     if (!sessionToken || isCreating) return;
+    triggerHaptic('light');
     setIsCreating(true);
     setErrorMessage(null);
 
@@ -58,31 +61,35 @@ export default function WhotLobbyPage() {
     }
   };
 
+  const handlePlayBot = () => {
+    triggerHaptic('light');
+    setIsBotStarting(true);
+    router.push('/games/whot/demo-match');
+  };
+
   return (
     <main className="mx-auto flex max-w-lg flex-col px-4 py-6 pb-28 space-y-6 sm:px-6">
       {/* Header */}
-      <header className="flex items-center gap-3">
-        <div
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl"
-          style={{
-            background: 'linear-gradient(145deg, rgba(180,83,9,0.7) 0%, rgba(122,28,36,0.85) 100%)',
-          }}
-        >
-          <span className="text-2xl">🎴</span>
+      <header className="flex items-center gap-3.5">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#16161A] border border-white/[0.06]">
+          <svg className="w-5 h-5 text-[#C8B28A]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+            <rect x="5" y="4" width="10" height="14" rx="2" stroke="currentColor" />
+            <rect x="9" y="6" width="10" height="14" rx="2" stroke="currentColor" opacity="0.5" />
+          </svg>
         </div>
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
-            Whot! Naija Classic
+          <h1 className="text-xl font-medium tracking-tight text-[#F4F4F0]">
+            Whot! Classic
           </h1>
-          <p className="text-xs text-white/60">
-            Authentic Nigerian street card duel with configurable house rules.
+          <p className="text-xs text-[#8E8E93]">
+            Authentic Nigerian card duel with configurable house rules.
           </p>
         </div>
       </header>
 
       {!profile ? (
         <RegisterCard
-          title="Join Whot! Naija Arena"
+          title="Join Whot! Arena"
           description="Pick your player handle — opponents see your card table username on WhatsApp."
           isPending={register.isPending}
           error={register.error instanceof ApiClientError ? register.error.message : null}
@@ -91,18 +98,18 @@ export default function WhotLobbyPage() {
       ) : (
         <div className="space-y-5">
           {/* House Rules Configurator Card */}
-          <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 backdrop-blur-xl shadow-card space-y-4">
+          <section className="rounded-2xl border border-white/[0.06] bg-[#121214] p-5 space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400">
-                  Nigerian Street Setup
+                <span className="text-[10px] font-medium uppercase tracking-widest text-[#8E8E93]">
+                  Rules Configurator
                 </span>
-                <h2 className="text-base font-black text-white">House Rules Preset</h2>
+                <h2 className="text-sm font-medium text-[#F4F4F0]">House Rules Preset</h2>
               </div>
               <button
                 type="button"
                 onClick={() => setIsCustomizing(!isCustomizing)}
-                className="text-xs font-bold text-amber-400 hover:text-amber-300 underline underline-offset-4"
+                className="text-xs font-medium text-[#C8B28A] hover:text-[#d7c49f] transition-colors"
               >
                 {isCustomizing ? 'Hide Toggles' : 'Custom Rules'}
               </button>
@@ -113,98 +120,98 @@ export default function WhotLobbyPage() {
               <button
                 type="button"
                 onClick={() => handlePresetSelect('naija_street')}
-                className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-center transition-all ${
+                className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all ${
                   selectedPreset === 'naija_street'
-                    ? 'border-amber-400 bg-amber-500/20 text-white shadow-glow-gold'
-                    : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10'
+                    ? 'border-[#C8B28A] bg-[#1A1A1E] text-[#F4F4F0]'
+                    : 'border-white/[0.06] bg-[#161619] text-[#8E8E93] hover:text-[#E4E4E0]'
                 }`}
               >
-                <span className="text-sm font-black">🇳🇬 Street Classic</span>
-                <span className="text-[10px] text-white/50 mt-1">20s On • 14 Go Gen • Bombing</span>
+                <span className="text-xs font-medium">Street Classic</span>
+                <span className="text-[10px] text-[#52525B] mt-1">20s On • 14 Go Gen</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => handlePresetSelect('pure_no_20')}
-                className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-center transition-all ${
+                className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all ${
                   selectedPreset === 'pure_no_20'
-                    ? 'border-rose-400 bg-rose-500/20 text-white shadow-glow-red'
-                    : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10'
+                    ? 'border-[#C8B28A] bg-[#1A1A1E] text-[#F4F4F0]'
+                    : 'border-white/[0.06] bg-[#161619] text-[#8E8E93] hover:text-[#E4E4E0]'
                 }`}
               >
-                <span className="text-sm font-black">🚫 Pure Skill</span>
-                <span className="text-[10px] text-white/50 mt-1">No 20s (49 Cards) • 7 Pick 2</span>
+                <span className="text-xs font-medium">Pure Skill</span>
+                <span className="text-[10px] text-[#52525B] mt-1">No 20s • 49 Cards</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => handlePresetSelect('campus_chaos')}
-                className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-center transition-all ${
+                className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all ${
                   selectedPreset === 'campus_chaos'
-                    ? 'border-emerald-400 bg-emerald-500/20 text-white shadow-glow-emerald'
-                    : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10'
+                    ? 'border-[#C8B28A] bg-[#1A1A1E] text-[#F4F4F0]'
+                    : 'border-white/[0.06] bg-[#161619] text-[#8E8E93] hover:text-[#E4E4E0]'
                 }`}
               >
-                <span className="text-sm font-black">🔥 Campus Chaos</span>
-                <span className="text-[10px] text-white/50 mt-1">7 = Pick 2 • Heavy Stacking</span>
+                <span className="text-xs font-medium">Campus Chaos</span>
+                <span className="text-[10px] text-[#52525B] mt-1">7 = Pick 2 • Stacking</span>
               </button>
             </div>
 
             {/* Custom Rules Toggles Drawer */}
             {isCustomizing && (
-              <div className="mt-3 space-y-2.5 pt-3 border-t border-white/10">
+              <div className="mt-3 space-y-2.5 pt-3 border-t border-white/[0.06]">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-white/80">Exclude All 20 Cards (49-card deck)</span>
+                  <span className="text-[#8E8E93]">Exclude All 20 Cards (49-card deck)</span>
                   <input
                     type="checkbox"
                     checked={customRules.excludeWhot20}
                     onChange={() => handleToggleRule('excludeWhot20')}
-                    className="accent-amber-500 h-4 w-4 rounded"
+                    className="accent-[#C8B28A] h-4 w-4 rounded"
                   />
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-white/80">14 = &quot;Go Gen!&quot; (General Market)</span>
+                  <span className="text-[#8E8E93]">14 = &quot;Go Gen!&quot; (General Market)</span>
                   <input
                     type="checkbox"
                     checked={customRules.rule14GoGen}
                     onChange={() => handleToggleRule('rule14GoGen')}
-                    className="accent-amber-500 h-4 w-4 rounded"
+                    className="accent-[#C8B28A] h-4 w-4 rounded"
                   />
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-white/80">2 = &quot;Pick Two&quot;</span>
+                  <span className="text-[#8E8E93]">2 = &quot;Pick Two&quot;</span>
                   <input
                     type="checkbox"
                     checked={customRules.rule2PickTwo}
                     onChange={() => handleToggleRule('rule2PickTwo')}
-                    className="accent-amber-500 h-4 w-4 rounded"
+                    className="accent-[#C8B28A] h-4 w-4 rounded"
                   />
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-white/80">5 = &quot;Pick Three&quot; (Heavy Artillery)</span>
+                  <span className="text-[#8E8E93]">5 = &quot;Pick Three&quot; (Heavy Penalty)</span>
                   <input
                     type="checkbox"
                     checked={customRules.rule5PickThree}
                     onChange={() => handleToggleRule('rule5PickThree')}
-                    className="accent-amber-500 h-4 w-4 rounded"
+                    className="accent-[#C8B28A] h-4 w-4 rounded"
                   />
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-white/80">Penalty Stacking (&quot;Bombing&quot;)</span>
+                  <span className="text-[#8E8E93]">Penalty Stacking (&quot;Bombing&quot;)</span>
                   <input
                     type="checkbox"
                     checked={customRules.allowPenaltyStacking}
                     onChange={() => handleToggleRule('allowPenaltyStacking')}
-                    className="accent-amber-500 h-4 w-4 rounded"
+                    className="accent-[#C8B28A] h-4 w-4 rounded"
                   />
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-white/80">Cannot Check Up on Power Card</span>
+                  <span className="text-[#8E8E93]">Cannot Check Up on Power Card</span>
                   <input
                     type="checkbox"
                     checked={!customRules.allowWinOnSpecial}
                     onChange={() => handleToggleRule('allowWinOnSpecial')}
-                    className="accent-amber-500 h-4 w-4 rounded"
+                    className="accent-[#C8B28A] h-4 w-4 rounded"
                   />
                 </div>
               </div>
@@ -212,41 +219,56 @@ export default function WhotLobbyPage() {
 
             {/* Active Rule Badges */}
             <div className="flex flex-wrap gap-1.5 pt-2">
-              <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-white/5 border border-white/10 text-white/70">
-                {customRules.excludeWhot20 ? '🚫 No 20s' : '👑 20s Wild'}
+              <span className="px-2 py-0.5 text-[10px] font-medium rounded-md bg-[#161619] border border-white/[0.06] text-[#8E8E93]">
+                {customRules.excludeWhot20 ? 'No 20s' : '20s Wild'}
               </span>
-              <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-white/5 border border-white/10 text-white/70">
-                {customRules.rule14GoGen ? '🛒 14 = Go Gen' : '14 = Normal'}
+              <span className="px-2 py-0.5 text-[10px] font-medium rounded-md bg-[#161619] border border-white/[0.06] text-[#8E8E93]">
+                {customRules.rule14GoGen ? '14 = Go Gen' : '14 = Normal'}
               </span>
-              <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-white/5 border border-white/10 text-white/70">
-                {customRules.allowPenaltyStacking ? '💣 Stacking ON' : '🛡️ No Stacking'}
+              <span className="px-2 py-0.5 text-[10px] font-medium rounded-md bg-[#161619] border border-white/[0.06] text-[#8E8E93]">
+                {customRules.allowPenaltyStacking ? 'Stacking On' : 'No Stacking'}
               </span>
               {customRules.rule7Variant === 'pick_two' && (
-                <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-300">
-                  7️⃣ = Pick Two
+                <span className="px-2 py-0.5 text-[10px] font-medium rounded-md bg-[#161619] border border-[#C8B28A]/30 text-[#C8B28A]">
+                  7 = Pick Two
                 </span>
               )}
             </div>
           </section>
 
           {/* Action Launchers */}
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             <button
               type="button"
-              disabled={isCreating}
+              disabled={isCreating || isBotStarting}
               onClick={handleStartMatch}
-              className="w-full py-4 rounded-2xl bg-gradient-to-r from-amber-500 via-rose-600 to-amber-600 text-white font-black text-base shadow-xl hover:opacity-95 active:scale-98 transition-all flex items-center justify-center gap-2"
+              className="w-full py-3.5 rounded-xl bg-[#F4F4F0] hover:bg-white text-[#0A0A0B] font-medium text-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              <span>{isCreating ? 'Creating Table...' : 'Create Match & Invite via WhatsApp'}</span>
-              <span>⚔️</span>
+              {isCreating ? (
+                <>
+                  <span className="h-4 w-4 rounded-full border-2 border-[#0A0A0B] border-t-transparent animate-spin" />
+                  <span>Preparing table...</span>
+                </>
+              ) : (
+                <span>Create Match & Invite via WhatsApp</span>
+              )}
             </button>
 
-            <Link
-              href="/games/whot/demo-match"
-              className="w-full py-3.5 rounded-2xl border border-white/15 bg-white/5 hover:bg-white/10 text-white font-bold text-sm text-center block transition-all"
+            <button
+              type="button"
+              disabled={isCreating || isBotStarting}
+              onClick={handlePlayBot}
+              className="w-full py-3 rounded-xl border border-white/[0.08] bg-[#1A1A1E] hover:bg-[#222227] text-[#E4E4E0] font-medium text-sm text-center flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
             >
-              ⚡ Play Solo vs Smart Naija Bot (Instant Play)
-            </Link>
+              {isBotStarting ? (
+                <>
+                  <span className="h-3.5 w-3.5 rounded-full border-2 border-[#E4E4E0] border-t-transparent animate-spin" />
+                  <span>Loading Bot Arena...</span>
+                </>
+              ) : (
+                <span>Play vs Smart Bot</span>
+              )}
+            </button>
 
             {errorMessage && (
               <p className="text-xs text-rose-400 text-center font-medium">{errorMessage}</p>

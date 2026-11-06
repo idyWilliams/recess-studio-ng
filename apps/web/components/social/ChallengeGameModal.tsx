@@ -3,13 +3,14 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useIdentity } from '@/hooks/use-identity';
+import { PlayerMedallion } from '@/components/ui/PlayerMedallion';
 import { triggerHaptic } from '@/lib/haptics';
 
 interface TargetPlayer {
   id: string;
   username: string;
   displayName?: string;
-  avatarUrl?: string;
+  flag?: string;
   elo?: number;
 }
 
@@ -24,29 +25,25 @@ const DUEL_GAMES = [
     id: 'word-battle',
     name: 'Word Battle',
     tagline: '5-Letter Tactical Vocabulary Duel',
-    icon: '🔤',
-    badge: '1v1 Duel',
+    code: 'WB',
   },
   {
     id: 'whot',
     name: 'Whot! Naija Classic',
     tagline: 'Hold On, Pick Two & 20 WHOT!',
-    icon: '🃏',
-    badge: 'Card Battle',
+    code: 'WH',
   },
   {
     id: 'mancala',
     name: 'Mancala Royale',
     tagline: 'Ancient Kalah Pit Sowing Duel',
-    icon: '🪨',
-    badge: 'Strategy',
+    code: 'MC',
   },
   {
     id: 'ludo',
     name: 'Ludo Arena',
     tagline: '4-Quadrant Pawn Race & Knockouts',
-    icon: '🎲',
-    badge: 'Board Duel',
+    code: 'LD',
   },
 ];
 
@@ -90,12 +87,12 @@ export function ChallengeGameModal({
 
       const data = await res.json();
       triggerHaptic('success');
-      setToastMessage(`⚡ Challenge sent to @${targetPlayer.username}'s WhatsApp & Recess Inbox! Entering arena...`);
+      setToastMessage(`Invitation dispatched to @${targetPlayer.username}. Entering match...`);
 
       setTimeout(() => {
         onClose();
         router.push(data.matchUrl);
-      }, 900);
+      }, 700);
     } catch {
       // Fallback: route directly to game
       router.push(`/games/${gameId}`);
@@ -111,43 +108,42 @@ export function ChallengeGameModal({
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
     >
-      <div className="relative w-full max-w-sm overflow-hidden rounded-3xl border border-white/10 bg-[#12171D] p-5 shadow-2xl backdrop-blur-2xl text-white space-y-4">
+      <div className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-white/[0.08] bg-[#121214] p-5 shadow-2xl backdrop-blur-2xl text-[#F4F4F0] space-y-4">
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-white/10">
-          <div className="flex items-center gap-2.5">
-            {targetPlayer.avatarUrl && (
-              <img
-                src={targetPlayer.avatarUrl}
-                alt={targetPlayer.username}
-                className="h-8 w-8 rounded-full border border-white/20 bg-white/5"
-              />
-            )}
+        <div className="flex items-center justify-between pb-3 border-b border-white/[0.06]">
+          <div className="flex items-center gap-3">
+            <PlayerMedallion
+              size="sm"
+              username={targetPlayer.username}
+              displayName={targetPlayer.displayName}
+              countryFlag={targetPlayer.flag}
+            />
             <div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-[#00A884]">
-                Direct Duel Challenge
-              </span>
-              <h3 className="text-base font-extrabold text-white">
+              <h3 className="text-base font-medium text-[#F4F4F0]">
                 Duel @{targetPlayer.username}
               </h3>
+              <p className="text-xs text-[#8E8E93]">
+                {targetPlayer.elo ? `${targetPlayer.elo} Elo` : 'Direct Challenge'}
+              </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-white/5 text-white/60 hover:bg-white/10 hover:text-white"
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.05] text-[#8E8E93] hover:text-[#F4F4F0] transition-colors"
           >
             ✕
           </button>
         </div>
 
         {toastMessage && (
-          <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/20 p-2.5 text-center text-xs font-bold text-emerald-300 animate-pulse">
+          <div className="rounded-xl border border-white/[0.08] bg-[#161619] p-2.5 text-center text-xs font-medium text-[#C8B28A]">
             {toastMessage}
           </div>
         )}
 
-        <p className="text-xs text-white/60">
-          Pick a game table. An alert will instantly be dispatched to @{targetPlayer.username}&apos;s Recess inbox and WhatsApp:
+        <p className="text-xs text-[#8E8E93]">
+          Select a table. An invite will be dispatched to @{targetPlayer.username}:
         </p>
 
         {/* Game Options List */}
@@ -160,30 +156,29 @@ export function ChallengeGameModal({
                 type="button"
                 onClick={() => handleSelectGame(game.id)}
                 disabled={isSending}
-                className={`flex w-full items-center justify-between rounded-2xl border p-3 text-left transition-all active:scale-[0.98] ${
+                className={`flex w-full items-center justify-between rounded-xl border p-3 text-left transition-all active:scale-[0.98] ${
                   isLoading
-                    ? 'border-[#00A884] bg-[#00A884]/20'
-                    : 'border-white/[0.08] bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.06]'
+                    ? 'border-white/30 bg-[#1A1A20]'
+                    : 'border-white/[0.06] bg-[#18181B] hover:bg-[#1E1E23]'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/5 text-xl">
-                    {game.icon}
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] bg-[#121214] text-xs font-semibold text-[#C8B28A]">
+                    {game.code}
                   </span>
                   <div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-sm font-black text-white">{game.name}</span>
-                      <span className="rounded bg-white/10 px-1.5 py-0.2 text-[9px] font-bold text-white/60">
-                        {game.badge}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-white/50">{game.tagline}</p>
+                    <h4 className="text-sm font-medium text-[#F4F4F0]">{game.name}</h4>
+                    <p className="text-[11px] text-[#8E8E93]">{game.tagline}</p>
                   </div>
                 </div>
 
-                <span className="text-sm font-bold text-[#00A884]">
-                  {isLoading ? '...' : '⚔️'}
-                </span>
+                <div className="flex items-center gap-1.5 text-xs text-[#8E8E93]">
+                  {isLoading ? (
+                    <span className="h-3.5 w-3.5 rounded-full border-2 border-white/40 border-t-transparent animate-spin" />
+                  ) : (
+                    <span>&rarr;</span>
+                  )}
+                </div>
               </button>
             );
           })}

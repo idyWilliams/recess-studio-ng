@@ -678,5 +678,40 @@ describe('Whot! Naija Classic Engine (@recess/game-whot)', () => {
       expect(configured.houseRules.excludeWhot20).toBe(true);
       expect(configured.houseRules.rule7Variant).toBe('pick_two');
     });
+
+    it('retains turn for bot on Hold On (Card 1) allowing consecutive moves', () => {
+      const state: WhotState = {
+        players: [PLAYER_ONE, PLAYER_TWO],
+        currentPlayerId: 'p1',
+        hands: {
+          p1: [
+            { id: 'c1', suit: 'circle', number: 1 },
+            { id: 'c5', suit: 'circle', number: 5 },
+            { id: 'c3', suit: 'circle', number: 3 },
+          ],
+          p2: [{ id: 't4', suit: 'triangle', number: 4 }],
+        },
+        stockPile: [{ id: 's1', suit: 'star', number: 1 }],
+        discardPile: [{ id: 'c4', suit: 'circle', number: 4 }],
+        activeSuit: 'circle',
+        activeNumber: 4,
+        pendingDrawCount: 0,
+        turnCount: 2,
+        isGameOver: false,
+        houseRules: { ...DEFAULT_WHOT_HOUSE_RULES },
+        history: [],
+      };
+
+      // Player 1 plays Card 1 (Hold On)
+      const afterHoldOn = engine.applyMove(state, { type: 'play', cardId: 'c1' }, 'p1');
+
+      // Turn must remain with p1!
+      expect(afterHoldOn.currentPlayerId).toBe('p1');
+      expect(afterHoldOn.activeNumber).toBe(1);
+
+      // Player 1 plays consecutive card (Circle 5)
+      const afterSecondPlay = engine.applyMove(afterHoldOn, { type: 'play', cardId: 'c5' }, 'p1');
+      expect(afterSecondPlay.currentPlayerId).toBe('p2');
+    });
   });
 });

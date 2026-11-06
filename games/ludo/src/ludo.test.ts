@@ -369,5 +369,36 @@ describe('Ludo Arena Engine (@recess/game-ludo)', () => {
       const projected = engine.projectPlayerView(emptyState, 'p1');
       expect(projected).toEqual({});
     });
+
+    it('handles consecutive multi-step turn progression when rolling a 6', () => {
+      // Step 1: In roll phase, bot rolls a 6
+      const initialState = engine.createInitialState([
+        { id: 'bot-green', displayName: 'NaijaBot' },
+        { id: 'player-red', displayName: 'Player' },
+      ]);
+      expect(initialState.currentPlayerId).toBe('bot-green');
+      expect(initialState.turnPhase).toBe('roll');
+
+      // Force roll 6
+      const rollState: LudoState = {
+        ...initialState,
+        turnPhase: 'move',
+        diceRoll: 6,
+      };
+
+      // Step 2: Bot executes MOVE with token 0 from yard
+      const botColor = rollState.currentColor;
+      const moveState = engine.applyMove(rollState, { tokenIndex: 0 }, 'bot-green');
+
+      // Bot earned an extra roll: phase must reset to 'roll', diceRoll null, and bot retains turn
+      expect(moveState.currentPlayerId).toBe('bot-green');
+      expect(moveState.turnPhase).toBe('roll');
+      expect(moveState.diceRoll).toBeNull();
+      expect(moveState.tokens[botColor]![0]?.step).toBe(0); // exited yard
+
+      // Step 3: Bot rolls again
+      const secondRoll = engine.applyMove(moveState, { type: 'roll' }, 'bot-green');
+      expect(secondRoll.diceRoll).toBeDefined();
+    });
   });
 });

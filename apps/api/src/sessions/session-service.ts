@@ -17,6 +17,7 @@ import {
 import { AppError } from '../errors/app-error.js';
 import { GameRegistry } from '../games/game-registry.js';
 import { dictionaryApiValidator, type WordValidator } from '../games/word-validator.js';
+import type { WhatsAppGateway } from '../whatsapp/whatsapp-gateway.js';
 import type {
   SessionRecord,
   SessionRepository,
@@ -34,6 +35,8 @@ export const TURN_DURATION_MS = 15_000;
 type RegisteredGame = NonNullable<ReturnType<GameRegistry['get']>>;
 
 export class SessionService {
+  private whatsappGateway?: WhatsAppGateway | undefined;
+
   constructor(
     private repo: SessionRepository,
     private gameRegistry: GameRegistry = new GameRegistry(),
@@ -41,6 +44,10 @@ export class SessionService {
     /** Injected clock — tests drive it deterministically; production uses the wall clock. */
     private now: () => Date = () => new Date(),
   ) {}
+
+  setWhatsAppGateway(gateway: WhatsAppGateway): void {
+    this.whatsappGateway = gateway;
+  }
 
   private mapResponse(
     session: SessionWithPlayers,
@@ -217,6 +224,28 @@ export class SessionService {
       if (!activeSession) {
         throw new Error('Failed to load active session');
       }
+
+      // Dispatch automated WhatsApp notification & live push to the host (player 1)
+      if (this.whatsappGateway) {
+        const host = updated.players[0];
+        const joiner = updated.players[1] ?? updated.players[updated.players.length - 1];
+        if (host && joiner && host.userId !== joiner.userId) {
+          const gameTitle = game.name ?? session.gameId;
+          const matchUrl = `/games/${session.gameId}/${session.publicId}`;
+          void this.whatsappGateway.sendNotification({
+            toUserId: host.userId,
+            type: 'invite_accepted',
+            title: `🟢 @${joiner.username} joined ${gameTitle}!`,
+            message: `🟢 @${joiner.username} just accepted your ${gameTitle} invite on Recess! The table is live — tap to play:`,
+            matchUrl,
+            gameTitle,
+            fromUsername: joiner.username,
+            fromUserId: joiner.userId,
+            publicId: session.publicId,
+          }).catch(() => {});
+        }
+      }
+
       return this.mapResponse(activeSession);
     }
 
@@ -370,6 +399,62 @@ export class SessionService {
       result,
       nextTurnDeadlineAt,
     });
+
+    // Event 2 & 3: Turn Played or Match Finished
+    if (this.whatsappGateway) {
+      const gameTitle = game.name ?? session.gameId;
+      const matchUrl = `/games/${session.gameId}/${session.publicId}`;
+      const actingPlayer = session.players.find((p) => p.userId === userId);
+      const moverUsername = actingPlayer?.username ?? 'Opponent';
+
+      if (isGameOver && result) {
+        for (const player of session.players) {
+          const isWinner = result.winnerPlayerId === player.userId;
+          const outcomeText = isWinner ? '🏆 Victory!' : '🏁 Match Completed';
+          void this.whatsappGateway.sendNotification({
+            toUserId: player.userId,
+            type: 'game_result',
+            title: `${outcomeText} in ${gameTitle}`,
+            message: `🏁 ${gameTitle} match against @${moverUsername} finished! Tap to view final score & rematch:`,
+            matchUrl,
+            gameTitle,
+            fromUsername: moverUsername,
+            fromUserId: userId,
+            publicId: session.publicId,
+          }).catch(() => {});
+        }
+      } else if (nextPlayerId && nextPlayerId !== userId) {
+        let moveSummary = 'made a move';
+        const m = input.move as Record<string, unknown> | null;
+        if (m) {
+          if (typeof m.word === 'string') {
+            moveSummary = `played "${m.word.toUpperCase()}"`;
+          } else if (m.type === 'play' && m.cardId) {
+            moveSummary = `played card ${String(m.cardId)}`;
+          } else if (m.type === 'draw') {
+            moveSummary = 'drew from market';
+          } else if (m.type === 'sow' && typeof m.pitIndex === 'number') {
+            moveSummary = `sowed pit #${m.pitIndex}`;
+          } else if (m.type === 'move') {
+            moveSummary = 'moved a pawn';
+          } else if (m.type === 'roll') {
+            moveSummary = 'rolled the dice';
+          }
+        }
+
+        void this.whatsappGateway.sendNotification({
+          toUserId: nextPlayerId,
+          type: 'turn',
+          title: `⚔️ Your turn in ${gameTitle}!`,
+          message: `⚔️ It's your turn in ${gameTitle}! @${moverUsername} just played (${moveSummary}). Tap to respond:`,
+          matchUrl,
+          gameTitle,
+          fromUsername: moverUsername,
+          fromUserId: userId,
+          publicId: session.publicId,
+        }).catch(() => {});
+      }
+    }
 
     return this.mapResponse(updated);
   }

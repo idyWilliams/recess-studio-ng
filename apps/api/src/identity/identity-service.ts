@@ -696,6 +696,30 @@ export class IdentityService {
     };
   }
 
+  createDirectNotification(notification: PlayerNotification): void {
+    this.notifications.unshift(notification);
+    if (this.notifications.length > 200) {
+      this.notifications.pop();
+    }
+  }
+
+  async getUserPhoneNumber(userIdOrProfileId: string): Promise<string | null> {
+    try {
+      const user = await this.repo.findUserById(userIdOrProfileId);
+      if (user?.whatsappNumber) {
+        return user.whatsappNumber;
+      }
+      const profile = await this.repo.findProfileById(userIdOrProfileId);
+      if (profile) {
+        const profileUser = await this.repo.findUserById(profile.userId);
+        return profileUser?.whatsappNumber ?? null;
+      }
+    } catch {
+      // ignore lookup error
+    }
+    return null;
+  }
+
   getNotifications(targetIdentifier: string): PlayerNotification[] {
     const clean = targetIdentifier.toLowerCase().trim();
     return this.notifications.filter(

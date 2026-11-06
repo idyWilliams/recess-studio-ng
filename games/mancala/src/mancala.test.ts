@@ -284,5 +284,22 @@ describe('Mancala Royale Rules Engine (@recess/game-mancala)', () => {
       expect(view.opponentSide.store).toBe(state.pits[6]);
       expect(view.isViewerTurn).toBe(false); // P1 is active
     });
+
+    it('grants an extra turn to player 2 (bot) when last seed lands in store pit 13', () => {
+      // P2 has 1 seed in pit 12. Sowing pit 12 places 1 seed directly into pit 13 (P2 store).
+      const pits = [4, 4, 4, 4, 4, 4, 0, 4, 4, 4, 4, 4, 1, 0];
+      const state = createTestState(pits, p2.id);
+
+      const next = mancalaGame.applyMove(state, { pitIndex: 12 }, p2.id);
+
+      // Must grant extra turn: currentPlayerId must remain p2.id!
+      expect(next.currentPlayerId).toBe(p2.id);
+      expect(next.pits[13]).toBe(1); // 1 seed in P2 store
+      expect(next.pits[12]).toBe(0); // pit 12 emptied
+
+      // P2 can immediately make another move
+      const secondMove = mancalaGame.applyMove(next, { pitIndex: 11 }, p2.id);
+      expect(secondMove.turnCount).toBe(2);
+    });
   });
 });

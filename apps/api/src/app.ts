@@ -13,18 +13,21 @@ import {
 import { registerHealthRoutes } from './routes/health.js';
 import { registerIdentityRoutes } from './routes/identity.js';
 import { registerSessionRoutes } from './routes/sessions.js';
+import { registerWhatsAppRoutes } from './routes/whatsapp.js';
 import {
   InMemorySessionRepository,
   PostgresSessionRepository,
 } from './sessions/session-repository.js';
 import { SessionService } from './sessions/session-service.js';
 import { TurnTimeoutSweeper } from './sessions/turn-timeout-sweeper.js';
+import { WhatsAppGateway } from './whatsapp/whatsapp-gateway.js';
 
 export function buildApp(
   env: Env,
   identityService?: IdentityService,
   sessionService?: SessionService,
   gameRegistry: GameRegistry = new GameRegistry(),
+  whatsappGateway?: WhatsAppGateway,
 ): FastifyInstance {
   const app = Fastify({
     logger: env.NODE_ENV !== 'test',
@@ -53,6 +56,11 @@ export function buildApp(
     resolvedSession = new SessionService(new InMemorySessionRepository(), gameRegistry);
   }
 
+  const resolvedWhatsAppGateway =
+    whatsappGateway ?? new WhatsAppGateway({}, resolvedIdentity);
+  resolvedWhatsAppGateway.setIdentityService(resolvedIdentity);
+  resolvedSession.setWhatsAppGateway(resolvedWhatsAppGateway);
+
   resolvedIdentity.setSessionStatsProvider(() => resolvedSession.getActiveSessionStats());
   resolvedIdentity.setSessionCreator((userId, input) => resolvedSession.createSession(userId, input));
 
@@ -60,6 +68,7 @@ export function buildApp(
   void app.register(registerHealthRoutes);
   registerIdentityRoutes(app, resolvedIdentity);
   registerSessionRoutes(app, resolvedSession, resolvedIdentity);
+  registerWhatsAppRoutes(app, resolvedWhatsAppGateway);
 
   // Background turn-timeout sweeper (ADR-007). Disabled under NODE_ENV=test so unit and
   // integration tests never depend on wall-clock timers — tests drive the same

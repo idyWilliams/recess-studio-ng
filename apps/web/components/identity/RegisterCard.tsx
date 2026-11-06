@@ -2,8 +2,6 @@
 
 import { useState, type FormEvent } from 'react';
 
-import { Button } from '@recess/ui';
-
 interface RegisterCardProps {
   title: string;
   description: string;
@@ -13,21 +11,14 @@ interface RegisterCardProps {
   onRegister: (username: string) => void;
 }
 
-/**
- * Minimal player-identity form (username → POST /auth/register). Presentation only —
- * the parent owns the mutation and error mapping. The server validates usernames
- * authoritatively; the input attributes here are light-touch hints.
- */
 export function RegisterCard({
   title,
   description,
-  tone = 'light',
   isPending,
   error,
   onRegister,
 }: RegisterCardProps) {
   const [username, setUsername] = useState('');
-  const dark = tone === 'dark';
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -39,25 +30,17 @@ export function RegisterCard({
 
   return (
     <section
-      className={`rounded-2xl p-5 ${dark ? 'text-white' : 'border border-recess-cream-border bg-white shadow-card'}`}
-      style={
-        dark
-          ? {
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)',
-            }
-          : undefined
-      }
+      className="rounded-2xl border border-white/[0.08] bg-[#121214] p-5 text-[#F4F4F0]"
       aria-label={title}
     >
-      <h2 className={`text-sm font-bold ${dark ? 'text-white' : 'text-recess-text-primary'}`}>
+      <h2 className="text-sm font-medium text-[#F4F4F0]">
         {title}
       </h2>
-      <p className={`mt-1 text-xs ${dark ? 'text-neutral-400' : 'text-recess-text-secondary'}`}>
+      <p className="mt-1 text-xs text-[#8E8E93]">
         {description}
       </p>
 
-      <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-2 sm:flex-row">
+      <form onSubmit={handleSubmit} className="mt-3.5 flex flex-col gap-2 sm:flex-row">
         <input
           type="text"
           value={username}
@@ -69,22 +52,19 @@ export function RegisterCard({
           minLength={3}
           maxLength={32}
           disabled={isPending}
-          className={`min-w-0 flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold outline-none transition-colors focus:ring-2 focus:ring-recess-purple ${
-            dark
-              ? 'border border-white/10 bg-white/10 text-white placeholder:text-neutral-500'
-              : 'border border-recess-cream-border bg-recess-cream text-recess-text-primary placeholder:text-recess-text-muted'
-          }`}
+          className="min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-[#18181B] px-3.5 py-2.5 text-sm text-[#F4F4F0] placeholder-[#52525B] outline-none transition-colors focus:border-white/30"
         />
-        <Button type="submit" size="md" isLoading={isPending} disabled={isPending}>
-          Create Profile
-        </Button>
+        <button
+          type="submit"
+          disabled={isPending}
+          className="rounded-xl bg-[#F4F4F0] hover:bg-white text-[#0A0A0B] text-xs font-medium px-5 py-2.5 transition-all active:scale-95 disabled:opacity-50"
+        >
+          {isPending ? 'Registering...' : 'Create Profile'}
+        </button>
       </form>
 
       {error && (
-        <p
-          className={`mt-2 text-xs font-semibold ${dark ? 'text-rose-300' : 'text-recess-error'}`}
-          role="alert"
-        >
+        <p className="mt-2 text-xs text-rose-400" role="alert">
           {error}
         </p>
       )}

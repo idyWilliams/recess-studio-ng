@@ -20,6 +20,7 @@ import {
 } from '@recess/game-ludo';
 import { shareMatchSnapshotToWhatsApp } from '@/lib/share-snapshot';
 import { formatWhatsAppDeepLink } from '@/lib/whatsapp';
+import { PlayerMedallion } from '@/components/ui/PlayerMedallion';
 
 const ludoEngine = new LudoRulesEngine();
 
@@ -44,18 +45,20 @@ export default function LudoArenaPage() {
   const [isRolling, setIsRolling] = useState(false);
   const [animatedDiceValue, setAnimatedDiceValue] = useState<number | null>(null);
   const [rollOutcome, setRollOutcome] = useState<RollOutcomePill | null>(null);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced'>('idle');
+  const [turnPingMessage, setTurnPingMessage] = useState<string | null>(null);
 
   // Initialize demo or fetch live match
   useEffect(() => {
     if (isDemo) {
       const initial = ludoEngine.createInitialState([
         { id: 'player-red', displayName: myUsername },
-        { id: 'bot-green', displayName: 'Tunde (Ludo Bot)' },
+        { id: 'bot-green', displayName: 'NaijaBot' },
       ]);
       setLocalState(initial);
       setRollOutcome({
         value: 1,
-        text: '🎲 Match Started! Tap the Die to roll',
+        text: 'Match Started — Tap Die to roll',
         pillClass: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300',
       });
     } else {
@@ -114,21 +117,22 @@ export default function LudoArenaPage() {
   const oppYard = greenTokens.filter((t) => t.step === -1).length;
   const oppTrack = greenTokens.filter((t) => t.step >= 0 && !t.isHome).length;
 
-  // Bot Turn Automation (in demo mode)
+  // Bot Turn Automation (handles 2-step roll->move and extra turn roll on 6 reliably)
   useEffect(() => {
-    if (
+    const isBotTurn = Boolean(
       isDemo &&
       currentState &&
       !currentState.isGameOver &&
-      currentState.currentPlayerId === 'bot-green' &&
-      !isBotPlaying
-    ) {
+      currentState.currentPlayerId === 'bot-green'
+    );
+
+    if (isBotTurn && !isBotPlaying) {
       setIsBotPlaying(true);
       const timer = setTimeout(() => {
         try {
-          if (currentState.turnPhase === 'roll') {
+          if (currentState!.turnPhase === 'roll') {
             // Bot Rolls
-            const next = ludoEngine.applyMove(currentState, { type: 'roll' }, 'bot-green');
+            const next = ludoEngine.applyMove(currentState!, { type: 'roll' }, 'bot-green');
             setLocalState(next);
 
             if (next.diceRoll === 6) {
@@ -144,10 +148,10 @@ export default function LudoArenaPage() {
                 pillClass: 'border-white/10 bg-white/5 text-white/70',
               });
             }
-          } else if (currentState.turnPhase === 'move') {
+          } else if (currentState!.turnPhase === 'move') {
             // Bot Moves
-            const botTokens = currentState.tokens[currentState.currentColor] ?? [];
-            const roll = currentState.diceRoll ?? 1;
+            const botTokens = currentState!.tokens[currentState!.currentColor] ?? [];
+            const roll = currentState!.diceRoll ?? 1;
             const validIdxs = botTokens
               .map((t, i) => (canTokenMove(t, roll) ? i : -1))
               .filter((i) => i !== -1);
@@ -158,7 +162,7 @@ export default function LudoArenaPage() {
               const chosen = trackToken !== undefined ? trackToken : (yardToken ?? validIdxs[0]!);
 
               const next = ludoEngine.applyMove(
-                currentState,
+                currentState!,
                 { type: 'move', tokenIndex: chosen },
                 'bot-green',
               );
@@ -172,6 +176,11 @@ export default function LudoArenaPage() {
                   pillClass: 'border-rose-500/40 bg-rose-500/20 text-rose-300',
                 });
               }
+            } else {
+              // Watchdog: If no tokens can move in move phase, pass turn safely
+              const forced = { ...currentState!, turnPhase: 'roll' as const, diceRoll: null };
+              (ludoEngine as any).advanceToNextPlayer?.(forced);
+              setLocalState(forced);
             }
           }
         } catch {
@@ -179,10 +188,17 @@ export default function LudoArenaPage() {
         } finally {
           setIsBotPlaying(false);
         }
-      }, 1100);
+      }, 750);
       return () => clearTimeout(timer);
     }
-  }, [isDemo, currentState, isBotPlaying]);
+  }, [
+    isDemo,
+    currentState?.currentPlayerId,
+    currentState?.turnCount,
+    currentState?.turnPhase,
+    currentState?.diceRoll,
+    isBotPlaying,
+  ]);
 
   // Handle Animated Roll Dice
   const handleRollDice = async () => {
@@ -347,7 +363,7 @@ export default function LudoArenaPage() {
           isCurrentTurn: isMyTurn,
         },
         playerTwo: {
-          name: isDemo ? 'Tunde (Bot)' : 'Opponent',
+          name: isDemo ? 'NaijaBot' : 'Opponent',
           score: oppHome,
           isCurrentTurn: !isMyTurn,
         },
@@ -359,7 +375,7 @@ export default function LudoArenaPage() {
     });
   };
 
-  const opponentDisplayName = isDemo ? 'Tunde (Ludo Bot)' : 'Opponent';
+  const opponentDisplayName = isDemo ? 'NaijaBot' : 'Opponent';
   const effectiveDiceVal = isRolling ? animatedDiceValue : (diceRoll ?? animatedDiceValue);
 
   return (
@@ -371,35 +387,32 @@ export default function LudoArenaPage() {
       myTurn={isMyTurn}
       timeLeftSec={isMyTurn ? 15 : null}
       onReturnToWhatsApp={handleShareTurn}
+      isBotPlaying={isBotPlaying}
+      syncStatus={syncStatus}
+      turnPingMessage={turnPingMessage}
+      onSendTurnPing={handleShareTurn}
     >
       <div className="relative min-h-[84vh] flex flex-col justify-between py-1 select-none overflow-hidden">
         {/* TOP BAR: Opponent Profile & Pawn Status Bar */}
-        <div className="flex items-center justify-between px-3.5 py-2.5 rounded-2xl bg-[#12171D] border border-white/[0.08] backdrop-blur-xl shadow-lg">
+        <div className="flex items-center justify-between px-3.5 py-2.5 rounded-2xl bg-[#121214] border border-white/[0.06] shadow-sm">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="relative">
-              <img
-                src="/assets/shared/avatars/avatar-tunde.svg"
-                alt={opponentDisplayName}
-                className="h-9 w-9 rounded-full border border-white/20 bg-white/5"
-              />
-              <span className="absolute -bottom-1 -right-1 text-xs">🇳🇬</span>
-            </div>
+            <PlayerMedallion username={opponentDisplayName} size="sm" isOnline={!isMyTurn} />
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <p className="text-xs font-black text-white truncate">
+                <p className="text-xs font-medium text-[#F4F4F0] truncate">
                   @{opponentDisplayName}
                 </p>
                 {!isMyTurn && (
-                  <span className="rounded bg-amber-500/20 px-1.5 py-0.2 text-[9px] font-bold text-amber-300 animate-pulse">
+                  <span className="rounded bg-[#C8B28A]/20 px-1.5 py-0.5 text-[9px] font-medium text-[#C8B28A]">
                     ● Turn
                   </span>
                 )}
               </div>
               {/* Mini Pawn Counters */}
-              <div className="flex items-center gap-2 text-[10px] text-white/60 font-semibold pt-0.5">
-                <span>🏠 Home: <strong className="text-white">{oppHome}/4</strong></span>
-                <span>🎯 Active: <strong className="text-white">{oppTrack}</strong></span>
-                <span>🔒 Yard: <strong className="text-white">{oppYard}</strong></span>
+              <div className="flex items-center gap-2 text-[10px] text-[#8E8E93] font-medium pt-0.5 tabular-nums">
+                <span>Home: <strong className="text-[#F4F4F0]">{oppHome}/4</strong></span>
+                <span>Active: <strong className="text-[#F4F4F0]">{oppTrack}</strong></span>
+                <span>Yard: <strong className="text-[#F4F4F0]">{oppYard}</strong></span>
               </div>
             </div>
           </div>
@@ -407,7 +420,7 @@ export default function LudoArenaPage() {
           <button
             type="button"
             onClick={handleShareTurn}
-            className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 px-2.5 py-1 text-[11px] font-bold text-emerald-300 transition-all active:scale-95 shadow-sm"
+            className="rounded-lg border border-white/[0.08] bg-[#1A1A1E] hover:bg-[#222227] px-2.5 py-1 text-xs font-medium text-[#E4E4E0] transition-colors"
           >
             Share
           </button>
@@ -442,35 +455,28 @@ export default function LudoArenaPage() {
           )}
 
           {/* Tray Dock */}
-          <div className="flex items-center justify-between px-3.5 py-3 rounded-2xl bg-[#12171D] border border-white/[0.08] backdrop-blur-2xl shadow-xl">
+          <div className="flex items-center justify-between px-3.5 py-3 rounded-2xl bg-[#121214] border border-white/[0.06] shadow-md">
             {/* Player Info & Mini Pawn Counters */}
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="relative">
-                <img
-                  src="/assets/shared/avatars/avatar-chidi.svg"
-                  alt={myUsername}
-                  className="h-10 w-10 rounded-full border-2 border-emerald-500/50 bg-white/5"
-                />
-                <span className="absolute -bottom-1 -right-1 text-xs">🇳🇬</span>
-              </div>
+              <PlayerMedallion username={myUsername} size="sm" isOnline={isMyTurn} />
 
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <p className="text-xs font-black text-white truncate">
+                  <p className="text-xs font-medium text-[#F4F4F0] truncate">
                     @{myUsername}
                   </p>
                   {isMyTurn && (
-                    <span className="rounded bg-emerald-500/25 px-1.5 py-0.2 text-[9px] font-extrabold text-emerald-300 animate-pulse">
+                    <span className="rounded bg-[#34D399]/20 px-1.5 py-0.5 text-[9px] font-medium text-[#34D399]">
                       ● Your Turn
                     </span>
                   )}
                 </div>
 
                 {/* 4 Mini Pawn Counters */}
-                <div className="flex items-center gap-2 text-[10px] text-white/60 font-semibold pt-0.5">
-                  <span>🏠 Home: <strong className="text-white">{myHome}/4</strong></span>
-                  <span>🎯 Active: <strong className="text-white">{myTrack}</strong></span>
-                  <span>🔒 Yard: <strong className="text-white">{myYard}</strong></span>
+                <div className="flex items-center gap-2 text-[10px] text-[#8E8E93] font-medium pt-0.5 tabular-nums">
+                  <span>Home: <strong className="text-[#F4F4F0]">{myHome}/4</strong></span>
+                  <span>Active: <strong className="text-[#F4F4F0]">{myTrack}</strong></span>
+                  <span>Yard: <strong className="text-[#F4F4F0]">{myYard}</strong></span>
                 </div>
               </div>
             </div>
@@ -490,9 +496,9 @@ export default function LudoArenaPage() {
                   type="button"
                   onClick={handleRollDice}
                   disabled={isRolling}
-                  className="rounded-xl bg-[#00A884] hover:bg-[#008f6f] px-3.5 py-2.5 text-xs font-black text-[#06130F] shadow-glow-green transition-all active:scale-95 disabled:opacity-50"
+                  className="rounded-xl bg-[#F4F4F0] hover:bg-white px-4 py-2 text-xs font-medium text-[#0A0A0B] transition-colors active:scale-95 disabled:opacity-50"
                 >
-                  {isRolling ? 'Rolling...' : '🎲 TAP TO ROLL'}
+                  {isRolling ? 'Rolling...' : 'Roll Dice'}
                 </button>
               )}
             </div>
@@ -532,7 +538,7 @@ export default function LudoArenaPage() {
                 setLocalState(fresh);
                 setRollOutcome({
                   value: 1,
-                  text: '🎲 New match! Tap Die to roll',
+                  text: 'New match — Tap Die to roll',
                   pillClass: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300',
                 });
               } else {

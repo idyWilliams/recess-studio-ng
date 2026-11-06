@@ -10,6 +10,13 @@ const envSchema = z.object({
   // NODE_ENV=test.
   TURN_SWEEP_INTERVAL_MS: z.coerce.number().int().positive().optional(),
   TURN_SWEEP_BATCH_SIZE: z.coerce.number().int().positive().optional(),
+  // WhatsApp Outbound Multi-Transport Gateway
+  WHATSAPP_API_URL: z.string().optional(),
+  WHATSAPP_API_KEY: z.string().optional(),
+  WHATSAPP_CLOUD_TOKEN: z.string().optional(),
+  WHATSAPP_PHONE_ID: z.string().optional(),
+  WHATSAPP_WEBHOOK_URL: z.string().optional(),
+  APP_BASE_URL: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

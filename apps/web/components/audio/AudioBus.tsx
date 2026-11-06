@@ -8,7 +8,6 @@ export function AudioBus() {
   const [isMuted, setIsMuted] = useState(false);
 
   useEffect(() => {
-    // Check initial state
     if (lofiAudioEngine) {
       setIsPlaying(lofiAudioEngine.getIsPlaying());
     }
@@ -19,7 +18,6 @@ export function AudioBus() {
 
     if (isPlaying) {
       if (!isMuted) {
-        // First tap while playing mutes/pauses
         lofiAudioEngine.pause();
         setIsPlaying(false);
       } else {
@@ -40,49 +38,35 @@ export function AudioBus() {
     <button
       type="button"
       onClick={handleToggle}
-      title={isPlaying ? 'Pause Lo-Fi African Jazz' : 'Play Lo-Fi African Jazz Lounge'}
-      className="group flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] hover:bg-white/[0.10] px-2.5 py-1 text-xs font-medium text-white/90 shadow-sm backdrop-blur-xl transition-all active:scale-95"
-      aria-label={isPlaying ? 'Pause music' : 'Play music'}
+      title={isPlaying ? 'Pause Audio' : 'Play Audio Lounge'}
+      className="group flex items-center gap-2 rounded-full border border-white/[0.07] bg-[#121214] hover:bg-[#18181B] px-3 py-1.5 text-xs text-[#8E8E93] hover:text-[#F4F4F0] transition-all active:scale-95"
+      aria-label={isPlaying ? 'Pause audio' : 'Play audio'}
     >
-      {/* Animated Equalizer Visualizer */}
-      <div className="flex h-3.5 items-end gap-[2px] px-0.5" aria-hidden="true">
+      {/* Minimalist Waveform Equalizer */}
+      <div className="flex h-3 items-end gap-[2px] px-0.5" aria-hidden="true">
         <span
-          className={`w-[2.5px] rounded-full bg-gradient-to-t from-recess-purple to-pink-400 transition-all ${
-            isPlaying ? 'h-3 animate-pulse' : 'h-1 opacity-40'
+          className={`w-[2px] rounded-full bg-[#C8B28A] transition-all ${
+            isPlaying ? 'h-3 animate-pulse' : 'h-1 opacity-30'
           }`}
           style={{ animationDuration: '600ms' }}
         />
         <span
-          className={`w-[2.5px] rounded-full bg-gradient-to-t from-pink-400 to-amber-300 transition-all ${
-            isPlaying ? 'h-3.5 animate-pulse' : 'h-1.5 opacity-40'
+          className={`w-[2px] rounded-full bg-[#C8B28A] transition-all ${
+            isPlaying ? 'h-3.5 animate-pulse' : 'h-1.5 opacity-30'
           }`}
           style={{ animationDuration: '450ms', animationDelay: '150ms' }}
         />
         <span
-          className={`w-[2.5px] rounded-full bg-gradient-to-t from-amber-300 to-emerald-400 transition-all ${
-            isPlaying ? 'h-2 animate-pulse' : 'h-1 opacity-40'
+          className={`w-[2px] rounded-full bg-[#C8B28A] transition-all ${
+            isPlaying ? 'h-2 animate-pulse' : 'h-1 opacity-30'
           }`}
           style={{ animationDuration: '700ms', animationDelay: '300ms' }}
         />
-        <span
-          className={`w-[2.5px] rounded-full bg-gradient-to-t from-emerald-400 to-recess-blue transition-all ${
-            isPlaying ? 'h-3.5 animate-pulse' : 'h-2 opacity-40'
-          }`}
-          style={{ animationDuration: '500ms', animationDelay: '75ms' }}
-        />
       </div>
 
-      {/* Track info / status */}
-      <div className="flex items-center gap-1.5">
-        <span className="hidden text-[11px] font-semibold tracking-wide text-white/90 sm:inline">
-          Lo-Fi Jazz
-        </span>
-        <span
-          className={`inline-block h-1.5 w-1.5 rounded-full ${
-            isPlaying ? 'bg-emerald-400 shadow-glow-green' : 'bg-white/30'
-          }`}
-        />
-      </div>
+      <span className="hidden text-[11px] font-medium tracking-tight text-[#8E8E93] group-hover:text-[#F4F4F0] sm:inline">
+        Audio
+      </span>
     </button>
   );
 }

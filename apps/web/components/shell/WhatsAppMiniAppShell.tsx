@@ -8,6 +8,8 @@ import {
   type LivePiPStateSnapshot,
 } from '@/lib/floating-pip';
 
+import { PlayerMedallion } from '@/components/ui/PlayerMedallion';
+
 export interface MatchHistoryChatEntry {
   id: string;
   word: string;
@@ -28,6 +30,10 @@ export interface WhatsAppMiniAppShellProps {
   historyEntries?: MatchHistoryChatEntry[] | undefined;
   onReturnToWhatsApp?: (() => void) | undefined;
   onSendWhatsAppChat?: ((message: string) => void) | undefined;
+  turnPingMessage?: string | null | undefined;
+  onSendTurnPing?: (() => void) | undefined;
+  isBotPlaying?: boolean | undefined;
+  syncStatus?: 'idle' | 'syncing' | 'synced' | undefined;
   children: ReactNode;
 }
 
@@ -39,10 +45,10 @@ interface CustomChatMessage {
 }
 
 const REACTION_CHIPS = [
-  '🔥 Too easy!',
-  '⏳ Hurry up!',
-  '🧠 Big brain move',
-  '🤝 Good game!',
+  'Well played',
+  'Your move',
+  'Sharp play',
+  'Good game',
 ];
 
 export function WhatsAppMiniAppShell({
@@ -56,18 +62,32 @@ export function WhatsAppMiniAppShell({
   historyEntries = [],
   onReturnToWhatsApp,
   onSendWhatsAppChat,
+  turnPingMessage,
+  onSendTurnPing,
+  isBotPlaying = false,
+  syncStatus = 'idle',
   children,
 }: WhatsAppMiniAppShellProps) {
   const [isMinimized, setIsMinimized] = useState(false);
   const [isPiPActive, setIsPiPActive] = useState(false);
   const [pipSupported, setPipSupported] = useState(false);
   const [customMessages, setCustomMessages] = useState<CustomChatMessage[]>([]);
+  const [isStandalone, setIsStandalone] = useState(true);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [dismissHandoff, setDismissHandoff] = useState(false);
   const pipControllerRef = useRef<FloatingPiPController | null>(null);
 
-  // Check PiP capability on mount
+  // Check PiP capability and standalone mode on mount
   useEffect(() => {
     const support = getFloatingPiPSupport();
     setPipSupported(support.isSupported);
+
+    if (typeof window !== 'undefined') {
+      const isStandaloneMode =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        (navigator as unknown as { standalone?: boolean }).standalone === true;
+      setIsStandalone(Boolean(isStandaloneMode));
+    }
   }, []);
 
   // Update PiP state live when props change
@@ -148,69 +168,109 @@ export function WhatsAppMiniAppShell({
     }
   };
 
-  const opponentInitial = opponentName.charAt(0).toUpperCase();
+  const handleCopyMatchCode = async () => {
+    if (typeof window !== 'undefined') {
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        setCopiedCode(true);
+        setTimeout(() => setCopiedCode(false), 2000);
+      } catch {
+        // Fallback
+      }
+    }
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-[#05070B] text-white">
-      {/* ── WhatsApp Chameleon Sheet Top Bar (#1F2C34) ──────────────── */}
-      <header
-        className="sticky top-0 z-50 flex flex-col border-b border-[#2A3942] bg-[#1F2C34] shadow-md transition-all select-none"
-        style={{ WebkitBackdropFilter: 'blur(8px)' }}
-      >
-        {/* Subtle center grab handle */}
-        <div className="flex w-full items-center justify-center pt-2 pb-1">
-          <div className="h-1 w-10 rounded-full bg-white/20" />
+    <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-[#0A0A0B] text-[#F4F4F0]">
+      {/* Mobile Browser Standalone Handoff Banner */}
+      {!isStandalone && !dismissHandoff && (
+        <div className="relative z-50 flex items-center justify-between border-b border-white/[0.06] bg-[#161619] px-4 py-2 text-xs text-[#E4E4E0]">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#34D399]" />
+            <span className="truncate text-xs font-medium text-[#8E8E93]">
+              Active Match Drawer • {gameTitle}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 ml-3">
+            <button
+              type="button"
+              onClick={handleCopyMatchCode}
+              className="rounded-lg bg-[#1F1F24] hover:bg-[#282830] border border-white/[0.08] px-2.5 py-1 text-xs font-medium text-[#F4F4F0] transition-colors"
+            >
+              {copiedCode ? 'Copied' : 'Copy Link'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setDismissHandoff(true)}
+              className="text-[#8E8E93] hover:text-[#F4F4F0] text-xs px-1"
+            >
+              ✕
+            </button>
+          </div>
         </div>
+      )}
 
-        {/* Action bar */}
-        <div className="flex items-center justify-between px-3.5 pb-2.5 pt-0.5">
-          {/* Left: Return to WhatsApp & Opponent Identity */}
-          <div className="flex items-center gap-2.5 min-w-0">
+      {/* ── Quiet Luxury Architectural Top Bar (#121214) ──────────────── */}
+      <header className="sticky top-0 z-50 flex flex-col border-b border-white/[0.06] bg-[#121214] shadow-sm select-none">
+        <div className="flex items-center justify-between px-4 py-3">
+          {/* Left: Return to Lounge / WhatsApp & Opponent Identity */}
+          <div className="flex items-center gap-3 min-w-0">
             {onReturnToWhatsApp && (
               <button
                 type="button"
                 onClick={onReturnToWhatsApp}
-                title="Return to WhatsApp Chat"
-                className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-[#00A884] transition-all hover:bg-white/10 active:scale-95"
+                title="Return to Lounge"
+                className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#1A1A1E] hover:bg-[#222227] px-2.5 py-1.5 text-xs font-medium text-[#E4E4E0] transition-colors"
               >
                 <span>←</span>
-                <span>WhatsApp</span>
+                <span>Lounge</span>
               </button>
             )}
 
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="relative flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-[#00A884] to-[#128C7E] font-bold text-white text-xs shadow-sm">
-                {opponentInitial}
-                {/* Pulsing online status indicator */}
-                <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-[#1F2C34] bg-[#00A884] animate-pulse" />
-              </div>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <PlayerMedallion username={opponentName} size="xs" isOnline={true} />
 
               <div className="flex flex-col min-w-0 leading-tight">
-                <span className="truncate text-xs font-bold text-white">
-                  {opponentName}
+                <span className="truncate text-xs font-medium text-[#F4F4F0]">
+                  @{opponentName}
                 </span>
-                <span className="flex items-center gap-1 text-[10px] text-[#8696A0]">
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#00A884]" />
-                  <span>{gameTitle} • Live Mini-App</span>
+                <span className="text-[10px] text-[#8E8E93]">
+                  {gameTitle}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Right: PiP Float and Minimize Controls */}
-          <div className="flex items-center gap-1.5 flex-shrink-0">
+          {/* Right: Sync Status, PiP Float, and Minimize Controls */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {syncStatus !== 'idle' && (
+              <div className="flex items-center gap-1.5 rounded-full bg-[#18181B] border border-white/[0.06] px-2.5 py-0.5 text-[10px] text-[#8E8E93]">
+                {syncStatus === 'syncing' ? (
+                  <>
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#C8B28A] animate-pulse" />
+                    <span>Syncing</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#34D399]" />
+                    <span>Synced</span>
+                  </>
+                )}
+              </div>
+            )}
+
             {pipSupported && (
               <button
                 type="button"
                 onClick={handleTogglePiP}
-                title={isPiPActive ? 'Close Floating PiP' : 'Float Match over WhatsApp'}
-                className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-bold transition-all active:scale-95 ${
+                title={isPiPActive ? 'Close Floating PiP' : 'Float Match'}
+                className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
                   isPiPActive
-                    ? 'bg-[#00A884] text-white shadow-sm'
-                    : 'bg-[#2A3942] text-[#E9EDEF] hover:bg-[#374248]'
+                    ? 'border-[#C8B28A] bg-[#C8B28A] text-[#0A0A0B]'
+                    : 'border-white/[0.08] bg-[#1A1A1E] text-[#E4E4E0] hover:bg-[#222227]'
                 }`}
               >
-                <span>⧉</span>
+                <span className="text-[10px]">⧉</span>
                 <span className="hidden xs:inline">{isPiPActive ? 'Floating' : 'Float'}</span>
               </button>
             )}
@@ -218,8 +278,8 @@ export function WhatsAppMiniAppShell({
             <button
               type="button"
               onClick={() => setIsMinimized((prev) => !prev)}
-              title={isMinimized ? 'Expand Game Arena' : 'Minimize to Chat Head'}
-              className="flex items-center gap-1 rounded-lg bg-[#2A3942] px-2.5 py-1 text-[11px] font-bold text-[#E9EDEF] transition-all hover:bg-[#374248] active:scale-95"
+              title={isMinimized ? 'Expand Game Arena' : 'Minimize View'}
+              className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#1A1A1E] px-3 py-1.5 text-xs font-medium text-[#E4E4E0] hover:bg-[#222227] transition-colors"
             >
               {isMinimized ? (
                 <>
@@ -228,61 +288,76 @@ export function WhatsAppMiniAppShell({
                 </>
               ) : (
                 <>
-                  <span>_</span>
+                  <span>—</span>
                   <span className="hidden xs:inline">Minimize</span>
                 </>
               )}
             </button>
           </div>
         </div>
+
+        {/* Bot Thinking Status Bar */}
+        {isBotPlaying && (
+          <div className="flex items-center justify-center gap-2 bg-[#18181B] border-t border-white/[0.06] py-1 text-xs text-[#C8B28A]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#C8B28A] animate-pulse" />
+            <span>@{opponentName} is calculating move...</span>
+          </div>
+        )}
+
+        {/* Turn Ping Toast / Fallback Bar */}
+        {turnPingMessage && (
+          <div className="flex items-center justify-between border-t border-white/[0.06] bg-[#161619] px-4 py-2 text-xs text-[#E4E4E0]">
+            <span className="truncate text-xs text-[#8E8E93]">
+              {turnPingMessage}
+            </span>
+            {onSendTurnPing && (
+              <button
+                type="button"
+                onClick={onSendTurnPing}
+                className="shrink-0 ml-3 rounded-lg bg-[#F4F4F0] hover:bg-white px-3 py-1 text-xs font-medium text-[#0A0A0B] transition-colors"
+              >
+                Share via WhatsApp
+              </button>
+            )}
+          </div>
+        )}
       </header>
 
-      {/* ── Active Arena or Minimized WhatsApp Mirror Thread ───────── */}
+      {/* ── Active Arena or Minimized Feed ───────── */}
       {!isMinimized ? (
         <div className="flex-1 w-full flex flex-col">{children}</div>
       ) : (
-        /* Minimized State: WhatsApp Mirror Live Chat Feed */
-        <div className="flex-1 flex flex-col bg-[#0B141A] relative overflow-hidden">
-          {/* Subtle WhatsApp chat doodle background overlay */}
-          <div
-            className="pointer-events-none absolute inset-0 opacity-[0.035]"
-            style={{
-              backgroundImage:
-                'radial-gradient(#FFFFFF 1.5px, transparent 1.5px), radial-gradient(#FFFFFF 1.5px, #0B141A 1.5px)',
-              backgroundSize: '30px 30px',
-              backgroundPosition: '0 0, 15px 15px',
-            }}
-          />
-
+        /* Minimized State: Clean Feed */
+        <div className="flex-1 flex flex-col bg-[#0A0A0B] relative overflow-hidden">
           {/* Chat feed */}
           <div className="relative z-10 flex-1 overflow-y-auto px-4 py-4 space-y-3">
             {/* System banner */}
             <div className="flex justify-center">
-              <span className="rounded-lg bg-[#182229] border border-[#2A3942]/60 px-3 py-1 text-[11px] font-medium text-[#8696A0] shadow-sm">
-                🔒 Live Match Session #{gameTitle} • End-to-End Synced
+              <span className="rounded-lg bg-[#121214] border border-white/[0.06] px-3 py-1 text-xs font-medium text-[#8E8E93]">
+                Live Match Session • {gameTitle}
               </span>
             </div>
 
             {/* Turn status alert bubble */}
             <div className="flex justify-center">
               <span
-                className={`rounded-lg px-3.5 py-1.5 text-xs font-bold shadow-sm flex items-center gap-1.5 ${
+                className={`rounded-lg px-3.5 py-1.5 text-xs font-medium flex items-center gap-2 ${
                   myTurn
-                    ? 'bg-[#00A884]/20 border border-[#00A884]/40 text-[#00A884]'
-                    : 'bg-[#F59E0B]/15 border border-[#F59E0B]/30 text-[#FBBF24]'
+                    ? 'bg-[#18181B] border border-[#34D399]/30 text-[#34D399]'
+                    : 'bg-[#18181B] border border-white/[0.08] text-[#8E8E93]'
                 }`}
               >
-                <span>{myTurn ? '🟢' : '⏳'}</span>
+                <span className={`h-1.5 w-1.5 rounded-full ${myTurn ? 'bg-[#34D399]' : 'bg-[#C8B28A]'}`} />
                 <span>
                   {myTurn
-                    ? 'Your Turn! Tap floating head to submit word'
-                    : `Waiting for ${opponentName} to play`}
+                    ? 'Your Turn'
+                    : `Waiting for ${opponentName}`}
                   {timeLeftSec != null ? ` (${timeLeftSec}s)` : ''}
                 </span>
               </span>
             </div>
 
-            {/* Move history as WhatsApp chat bubbles */}
+            {/* Move history */}
             {historyEntries.map((entry) => {
               const isViewer = entry.isViewer;
               return (
@@ -291,21 +366,20 @@ export function WhatsAppMiniAppShell({
                   className={`flex w-full ${isViewer ? 'justify-end' : 'justify-start'}`}
                 >
                   <div
-                    className={`max-w-[78%] rounded-2xl px-3.5 py-2 text-xs shadow-sm flex flex-col ${
+                    className={`max-w-[78%] rounded-xl px-4 py-2.5 text-xs flex flex-col ${
                       isViewer
-                        ? 'bg-[#005C4B] text-white rounded-tr-none'
-                        : 'bg-[#202C33] text-[#E9EDEF] rounded-tl-none'
+                        ? 'bg-[#1F1F24] border border-white/[0.08] text-[#F4F4F0]'
+                        : 'bg-[#121214] border border-white/[0.06] text-[#E4E4E0]'
                     }`}
                   >
-                    <span className="text-[10px] font-bold text-[#8696A0] mb-0.5">
+                    <span className="text-[10px] font-medium text-[#8E8E93] mb-0.5">
                       {isViewer ? 'You' : opponentName}
                     </span>
-                    <span className="text-sm font-semibold tracking-wide">
+                    <span className="text-sm font-medium tracking-wide">
                       Played &quot;{entry.word.toUpperCase()}&quot; (+{entry.score} pts)
                     </span>
-                    <div className="flex items-center justify-end gap-1 mt-1 text-[9px] text-[#8696A0]">
+                    <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-[#52525B]">
                       <span>{entry.timestamp ?? 'Just now'}</span>
-                      {isViewer && <span className="text-[#53BDEB] font-bold">✓✓</span>}
                     </div>
                   </div>
                 </div>
@@ -318,63 +392,52 @@ export function WhatsAppMiniAppShell({
                 key={msg.id}
                 className="flex w-full justify-end"
               >
-                <div className="max-w-[78%] rounded-2xl rounded-tr-none bg-[#005C4B] px-3.5 py-2 text-xs text-white shadow-sm flex flex-col">
-                  <span className="text-sm font-semibold">{msg.text}</span>
-                  <div className="flex items-center justify-end gap-1 mt-1 text-[9px] text-[#8696A0]">
+                <div className="max-w-[78%] rounded-xl bg-[#1F1F24] border border-white/[0.08] px-4 py-2.5 text-xs text-[#F4F4F0] flex flex-col">
+                  <span className="text-sm font-medium">{msg.text}</span>
+                  <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-[#52525B]">
                     <span>{msg.time}</span>
-                    <span className="text-[#53BDEB] font-bold">✓✓</span>
                   </div>
                 </div>
               </div>
             ))}
           </div>
 
-          {/* Quick Reaction Trash-Talk Chips Bar */}
-          <div className="relative z-10 border-t border-[#2A3942] bg-[#1F2C34] px-3 py-2.5 flex flex-col gap-2">
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
-              <span className="text-[10px] font-bold text-[#8696A0] uppercase tracking-wider flex-shrink-0 mr-1">
-                Quick Nudge:
+          {/* Quick Reaction Chips Bar */}
+          <div className="relative z-10 border-t border-white/[0.06] bg-[#121214] px-4 py-3 flex flex-col gap-2">
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5">
+              <span className="text-[10px] font-medium text-[#52525B] uppercase tracking-wider flex-shrink-0 mr-1">
+                Nudge:
               </span>
               {REACTION_CHIPS.map((chip) => (
                 <button
                   key={chip}
                   type="button"
                   onClick={() => handleSendReaction(chip)}
-                  className="flex-shrink-0 rounded-full border border-[#2A3942] bg-[#202C33] px-3 py-1 text-xs font-semibold text-[#E9EDEF] transition-all hover:bg-[#00A884] hover:text-white hover:border-[#00A884] active:scale-95"
+                  className="flex-shrink-0 rounded-lg border border-white/[0.08] bg-[#18181B] px-3 py-1.5 text-xs font-medium text-[#E4E4E0] transition-colors hover:bg-[#222227] hover:text-[#F4F4F0]"
                 >
                   {chip}
                 </button>
               ))}
             </div>
-
-            {onSendWhatsAppChat && (
-              <p className="text-[10px] text-center text-[#8696A0]">
-                Tapping a reaction posts to match thread & offers 1-tap WhatsApp sync
-              </p>
-            )}
           </div>
 
           {/* Floating Minimizable Game Head Bubble in Bottom Right Corner */}
           <button
             type="button"
             onClick={() => setIsMinimized(false)}
-            title="Expand Word Battle Arena"
-            className={`fixed bottom-24 right-4 z-50 flex items-center gap-2.5 rounded-full p-2 pl-3 text-left shadow-2xl transition-all hover:scale-105 active:scale-95 ${
-              myTurn
-                ? 'bg-[#161D2F] border-2 border-[#00A884] shadow-[0_0_20px_rgba(0,168,132,0.4)] ring-4 ring-[#00A884]/30 animate-pulse'
-                : 'bg-[#161D2F] border-2 border-[#F59E0B] shadow-[0_0_15px_rgba(245,158,11,0.3)] ring-2 ring-[#F59E0B]/20'
-            }`}
+            title="Expand Game Arena"
+            className="fixed bottom-24 right-4 z-50 flex items-center gap-3 rounded-full bg-[#18181B] border border-white/[0.1] px-4 py-2.5 text-left shadow-2xl transition-transform hover:scale-105 active:scale-95"
           >
             <div className="flex flex-col leading-none">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">
-                {myTurn ? '🟢 YOUR TURN' : '⏳ WAITING'}
+              <span className="text-[10px] font-medium tracking-wider text-[#8E8E93]">
+                {myTurn ? 'YOUR TURN' : 'WAITING'}
               </span>
-              <span className="mt-1 text-xs font-black text-white">
-                {myScore} - {opponentScore}
+              <span className="mt-1 text-xs font-semibold tabular-nums text-[#F4F4F0]">
+                {myScore} – {opponentScore}
               </span>
             </div>
 
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-tr from-[#6C38FF] to-[#1B76FF] font-black text-white text-xs shadow-md">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#F4F4F0] text-[#0A0A0B] text-xs font-semibold">
               ↗
             </div>
           </button>

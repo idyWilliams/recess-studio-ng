@@ -27,7 +27,7 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Bottom Navigation"
-      className="fixed bottom-0 left-0 right-0 z-30 border-t border-white/[0.08] bg-[#05070B]/85 backdrop-blur-2xl pb-[env(safe-area-inset-bottom)] shadow-2xl"
+      className="fixed bottom-0 left-0 right-0 z-30 border-t border-white/[0.06] bg-[#0A0A0B]/90 backdrop-blur-xl pb-[env(safe-area-inset-bottom)] shadow-2xl"
     >
       <div className="mx-auto flex max-w-lg items-center justify-around px-2 py-2">
         {navItems.map((item) => {
@@ -38,18 +38,18 @@ export function BottomNav() {
             <Link
               key={item.href}
               href={item.href}
-              className={`group flex flex-col items-center justify-center rounded-2xl px-4 py-1.5 transition-all select-none active:scale-95 ${
+              className={`group flex flex-col items-center justify-center rounded-xl px-4 py-1.5 transition-all select-none active:scale-95 ${
                 isActive
-                  ? 'text-emerald-400 font-extrabold'
-                  : 'text-white/50 hover:text-white'
+                  ? 'text-[#F4F4F0] font-medium'
+                  : 'text-[#636366] hover:text-[#8E8E93]'
               }`}
             >
               <span
                 aria-hidden="true"
-                className={`h-5 w-5 transition-colors ${
+                className={`h-4.5 w-4.5 transition-colors ${
                   isActive
-                    ? 'bg-[#00A884]'
-                    : 'bg-white/50 group-hover:bg-white'
+                    ? 'bg-[#F4F4F0]'
+                    : 'bg-[#636366] group-hover:bg-[#8E8E93]'
                 }`}
                 style={{
                   maskImage: `url(${item.icon})`,
@@ -66,8 +66,10 @@ export function BottomNav() {
               <span className="mt-1 text-[11px] leading-tight tracking-tight">
                 {item.label}
               </span>
-              {isActive && (
-                <span className="mt-0.5 h-1 w-4 rounded-full bg-[#00A884] shadow-glow-green" />
+              {isActive ? (
+                <span className="mt-1 h-1 w-1 rounded-full bg-[#C8B28A]" />
+              ) : (
+                <span className="mt-1 h-1 w-1" />
               )}
             </Link>
           );

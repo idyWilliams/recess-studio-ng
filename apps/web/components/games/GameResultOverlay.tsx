@@ -2,7 +2,6 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Button } from '@recess/ui';
 
 export interface GameResultOverlayProps {
   title?: string;
@@ -33,63 +32,70 @@ export function GameResultOverlay({
 }: GameResultOverlayProps) {
   const viewerWon = myUserId !== null && winnerId === myUserId;
   const headline = isDraw
-    ? '🤝 TIE GAME'
+    ? 'Draw'
     : viewerWon
-    ? '🏆 VICTORY!'
+    ? 'Victory'
     : winnerName
-    ? `👑 ${winnerName.toUpperCase()} WINS!`
-    : 'MATCH FINISHED';
+    ? `${winnerName} Wins`
+    : 'Match Concluded';
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
       role="alertdialog"
       aria-label="Match result"
     >
-      <div className="w-full max-w-sm rounded-3xl border border-white/15 bg-stone-900/95 p-6 text-center space-y-5 shadow-2xl">
-        <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-tr from-amber-500/20 to-emerald-500/20 border border-amber-400/30 text-3xl shadow-glow-gold">
-          {isDraw ? '🤝' : viewerWon ? '🏆' : '👑'}
+      <div className="w-full max-w-sm rounded-2xl border border-white/[0.08] bg-[#121214] p-6 text-center space-y-5 shadow-2xl">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#16161A] border border-white/[0.06] text-[#C8B28A]">
+          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+            {viewerWon ? (
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15l-3.5 2 1-4-3-3 4-.5L12 6l1.5 3.5 4 .5-3 3 1 4z" />
+            ) : isDraw ? (
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h8m-8 4h8m-8-8h8" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16 8v8m-4-5v5m-4-2v2" />
+            )}
+          </svg>
         </div>
 
         <div>
-          <span className="text-[10px] font-black uppercase tracking-widest text-amber-400">
-            {gameName} Recap
+          <span className="text-[10px] font-medium uppercase tracking-widest text-[#8E8E93]">
+            {gameName}
           </span>
-          <h2 className="text-2xl font-black text-white mt-1">{headline}</h2>
-          {title && <p className="text-xs text-white/60 mt-1">{title}</p>}
+          <h2 className="text-xl font-medium tracking-tight text-[#F4F4F0] mt-1">{headline}</h2>
+          {title && <p className="text-xs text-[#8E8E93] mt-1">{title}</p>}
         </div>
 
         {/* Score comparison card */}
-        <div className="flex items-center justify-around p-4 rounded-2xl bg-white/[0.04] border border-white/10">
+        <div className="flex items-center justify-around p-4 rounded-xl bg-[#18181B] border border-white/[0.06]">
           <div className="flex flex-col items-center">
-            <span className="text-xs font-bold text-white/70">{playerOne.name}</span>
-            <span className="text-xl font-black text-white mt-0.5">{playerOne.score}</span>
+            <span className="text-xs font-medium text-[#8E8E93]">@{playerOne.name}</span>
+            <span className="text-xl font-medium tabular-nums text-[#F4F4F0] mt-0.5">{playerOne.score}</span>
             {winnerId === playerOne.id && (
-              <span className="text-[10px] font-bold text-emerald-400 mt-1">Winner</span>
+              <span className="text-[10px] font-medium text-[#C8B28A] mt-1">Winner</span>
             )}
           </div>
 
-          <span className="text-xs font-black text-white/30">VS</span>
+          <span className="text-xs font-medium text-[#52525B]">VS</span>
 
           <div className="flex flex-col items-center">
-            <span className="text-xs font-bold text-white/70">{playerTwo.name}</span>
-            <span className="text-xl font-black text-white mt-0.5">{playerTwo.score}</span>
+            <span className="text-xs font-medium text-[#8E8E93]">@{playerTwo.name}</span>
+            <span className="text-xl font-medium tabular-nums text-[#F4F4F0] mt-0.5">{playerTwo.score}</span>
             {winnerId === playerTwo.id && (
-              <span className="text-[10px] font-bold text-emerald-400 mt-1">Winner</span>
+              <span className="text-[10px] font-medium text-[#C8B28A] mt-1">Winner</span>
             )}
           </div>
         </div>
 
         {/* Buttons */}
-        <div className="space-y-2 pt-2">
+        <div className="space-y-2 pt-1">
           {onShareWhatsApp && (
             <button
               type="button"
               onClick={onShareWhatsApp}
-              className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-black text-sm shadow-glow-emerald hover:opacity-95 active:scale-98 transition-all flex items-center justify-center gap-2"
+              className="w-full py-3 rounded-xl bg-[#F4F4F0] hover:bg-white text-[#0A0A0B] font-medium text-sm transition-colors"
             >
-              <span>Share Victory to WhatsApp</span>
-              <span>💬</span>
+              Share Result to WhatsApp
             </button>
           )}
 
@@ -97,17 +103,17 @@ export function GameResultOverlay({
             <button
               type="button"
               onClick={onPlayAgain}
-              className="w-full py-3.5 rounded-2xl border border-white/20 bg-white/5 hover:bg-white/10 text-white font-black text-sm transition-all"
+              className="w-full py-2.5 rounded-xl border border-white/[0.08] bg-[#1A1A1E] hover:bg-[#222227] text-[#E4E4E0] font-medium text-sm transition-colors"
             >
-              Play Again ↺
+              Play Again
             </button>
           )}
 
           <Link
             href={homeHref}
-            className="block w-full py-2.5 text-xs font-bold text-white/50 hover:text-white transition-colors"
+            className="block w-full py-2 text-xs font-medium text-[#8E8E93] hover:text-[#F4F4F0] transition-colors"
           >
-            Back to Arcade
+            Back to Lounge
           </Link>
         </div>
       </div>

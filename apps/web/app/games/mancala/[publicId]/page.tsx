@@ -37,6 +37,8 @@ export default function MancalaArenaPage() {
   const [session, setSession] = useState<any>(null);
   const [localState, setLocalState] = useState<MancalaState | null>(null);
   const [isBotPlaying, setIsBotPlaying] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced'>('idle');
+  const [turnPingMessage, setTurnPingMessage] = useState<string | null>(null);
   const [calloutToast, setCalloutToast] = useState<string | null>(null);
 
   // Initialize demo or fetch live match
@@ -44,7 +46,7 @@ export default function MancalaArenaPage() {
     if (isDemo) {
       const initial = mancalaEngine.createInitialState([
         { id: 'player-0', displayName: myUsername },
-        { id: 'bot-ayo', displayName: 'Ayo Master (Bot)' },
+        { id: 'bot-ayo', displayName: 'AyoBot' },
       ]);
       setLocalState(initial);
       setCalloutToast('🎮 Match Started! Tap any glowing pit on your side to sow');
@@ -86,26 +88,27 @@ export default function MancalaArenaPage() {
     }, 3200);
   };
 
-  // Bot Turn Automation (in demo mode)
+  // Bot Turn Automation (handles Kalah extra turns reliably)
   useEffect(() => {
-    if (
+    const isBotTurn = Boolean(
       isDemo &&
       currentState &&
       !currentState.isGameOver &&
-      currentState.currentPlayerId === 'bot-ayo' &&
-      !isBotPlaying
-    ) {
+      currentState.currentPlayerId === 'bot-ayo'
+    );
+
+    if (isBotTurn && !isBotPlaying) {
       setIsBotPlaying(true);
       const timer = setTimeout(() => {
         try {
           // Find non-empty P2 pit (pits 7..12)
           // Heuristic: prioritize extra turn if last seed lands in pit 13
-          const validPits = [7, 8, 9, 10, 11, 12].filter((p) => (currentState.pits[p] ?? 0) > 0);
+          const validPits = [7, 8, 9, 10, 11, 12].filter((p) => (currentState!.pits[p] ?? 0) > 0);
           if (validPits.length === 0) return;
 
           let chosenPit = validPits[0]!;
           for (const p of validPits) {
-            const count = currentState.pits[p]!;
+            const count = currentState!.pits[p]!;
             if ((p + count) % 14 === 13) {
               chosenPit = p; // Extra turn!
               break;
@@ -113,7 +116,7 @@ export default function MancalaArenaPage() {
           }
 
           const next = mancalaEngine.applyMove(
-            currentState,
+            currentState!,
             { type: 'sow', pitIndex: chosenPit },
             'bot-ayo',
           );
@@ -121,24 +124,44 @@ export default function MancalaArenaPage() {
 
           const lastHistory = next.history[next.history.length - 1];
           if (lastHistory?.grantedExtraTurn) {
-            triggerCallout('🤖 Ayo Master landed in Kalah! EXTRA TURN!');
+            triggerCallout('🤖 AyoBot landed in Kalah! EXTRA TURN!');
           } else if ((lastHistory?.capturedSeeds ?? 0) > 0) {
-            triggerCallout(`💥 Ayo Master captured ${lastHistory?.capturedSeeds} seeds!`);
+            triggerCallout(`💥 AyoBot captured ${lastHistory?.capturedSeeds} seeds!`);
           }
         } catch {
-          // pass on error
+          // Watchdog fallback: pick first valid pit to unstick
+          try {
+            const fallbackPit = [7, 8, 9, 10, 11, 12].find((p) => (currentState!.pits[p] ?? 0) > 0);
+            if (fallbackPit !== undefined) {
+              const fallback = mancalaEngine.applyMove(
+                currentState!,
+                { type: 'sow', pitIndex: fallbackPit },
+                'bot-ayo',
+              );
+              setLocalState(fallback);
+            }
+          } catch {
+            // ignore
+          }
         } finally {
           setIsBotPlaying(false);
         }
-      }, 1400);
+      }, 750);
       return () => clearTimeout(timer);
     }
-  }, [isDemo, currentState, isBotPlaying]);
+  }, [
+    isDemo,
+    currentState?.currentPlayerId,
+    currentState?.turnCount,
+    JSON.stringify(currentState?.pits),
+    isBotPlaying,
+  ]);
 
   // Handle Pit Click
   const handleSelectPit = async (pitIndex: number) => {
     if (!currentState || !isMyTurn || currentState.isGameOver) return;
     triggerHaptic('light');
+    setSyncStatus('syncing');
 
     const move: MancalaMove = { type: 'sow', pitIndex };
 
@@ -146,6 +169,8 @@ export default function MancalaArenaPage() {
       try {
         const next = mancalaEngine.applyMove(currentState, move, 'player-0');
         setLocalState(next);
+        setSyncStatus('synced');
+        setTimeout(() => setSyncStatus('idle'), 2000);
 
         const lastHistory = next.history[next.history.length - 1];
         if (lastHistory?.grantedExtraTurn) {
@@ -154,6 +179,7 @@ export default function MancalaArenaPage() {
           triggerCallout(`💥 CAPTURE! Swept ${lastHistory?.capturedSeeds} seeds into your store!`);
         }
       } catch (err: any) {
+        setSyncStatus('idle');
         triggerCallout(`⚠️ ${err?.message || 'Illegal Move'}`);
       }
     } else if (sessionToken) {
@@ -166,7 +192,11 @@ export default function MancalaArenaPage() {
         );
         setSession(updated);
         setLocalState(updated.state as unknown as MancalaState);
+        setSyncStatus('synced');
+        setTurnPingMessage('✅ Move saved & @opponent pinged!');
+        setTimeout(() => setSyncStatus('idle'), 3000);
       } catch (err: any) {
+        setSyncStatus('idle');
         triggerCallout(`⚠️ ${err?.message || 'Move failed'}`);
       }
     }
@@ -188,7 +218,7 @@ export default function MancalaArenaPage() {
           isCurrentTurn: isMyTurn,
         },
         playerTwo: {
-          name: 'Ayo Master',
+          name: isDemo ? 'AyoBot' : 'Opponent',
           score: currentState?.pits[13] ?? 0,
           isCurrentTurn: !isMyTurn,
         },
@@ -203,28 +233,32 @@ export default function MancalaArenaPage() {
   return (
     <WhatsAppMiniAppShell
       gameTitle="Mancala Royale"
-      opponentName={isDemo ? 'Ayo Master (Bot)' : 'Opponent'}
+      opponentName={isDemo ? 'AyoBot' : 'Opponent'}
       opponentScore={currentState?.pits[13] ?? 0}
       myScore={currentState?.pits[6] ?? 0}
       myTurn={isMyTurn}
       timeLeftSec={isMyTurn ? 15 : null}
       onReturnToWhatsApp={handleShareTurn}
+      isBotPlaying={isBotPlaying}
+      syncStatus={syncStatus}
+      turnPingMessage={turnPingMessage}
+      onSendTurnPing={handleShareTurn}
     >
       <div className="relative min-h-[82vh] flex flex-col justify-between py-2 select-none overflow-hidden">
         {/* Top Status Bar */}
-        <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-stone-900/80 border border-white/10 backdrop-blur-md">
-          <div className="flex items-center gap-2 text-xs font-black">
-            <span className="text-amber-400">🪵 Mancala Royale</span>
-            <span className="text-white/40">•</span>
-            <span className={isMyTurn ? 'text-emerald-400 animate-pulse' : 'text-white/60'}>
-              {isMyTurn ? 'YOUR TURN' : 'OPPONENT THINKING...'}
+        <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-[#121214] border border-white/[0.06] shadow-sm">
+          <div className="flex items-center gap-2 text-xs font-medium">
+            <span className="text-[#F4F4F0]">Mancala Royale</span>
+            <span className="text-white/20">•</span>
+            <span className={isMyTurn ? 'text-[#34D399]' : 'text-[#8E8E93]'}>
+              {isMyTurn ? 'Your Turn' : 'Waiting for Opponent'}
             </span>
           </div>
 
           <button
             type="button"
             onClick={handleShareTurn}
-            className="text-[11px] font-extrabold text-emerald-400 hover:text-emerald-300 px-2 py-1 rounded bg-emerald-500/10 border border-emerald-500/20"
+            className="text-xs font-medium text-[#E4E4E0] hover:text-[#F4F4F0] px-2.5 py-1 rounded-lg bg-[#1A1A1E] border border-white/[0.08] transition-colors"
           >
             Share Turn
           </button>
